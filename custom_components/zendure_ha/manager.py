@@ -314,6 +314,9 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
 
         # reflect the automation status on the status sensor and master switch
         active = operation != ManagerMode.OFF
+        # remember the last active mode (from the select or the switch) so the master switch restores it
+        if active:
+            self.operation_resume = operation
         self.automationActive.update_value(active)
         self.automationSwitch.update_value(active)
         self.surplusTarget.update_value(0)
