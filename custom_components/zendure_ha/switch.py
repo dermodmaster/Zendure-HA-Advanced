@@ -11,6 +11,7 @@ from homeassistant.components.switch import SwitchEntity, SwitchEntityDescriptio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.template import Template
 
 from .entity import EntityDevice, EntityZendure
@@ -75,3 +76,13 @@ class ZendureSwitch(EntityZendure, SwitchEntity):
             await self._onwrite(self, 0)
         else:
             self._onwrite(self, 0)
+
+
+class ZendureRestoreSwitch(ZendureSwitch, RestoreEntity):
+    """Representation of a Zendure switch entity that restores its state."""
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the last known state when added to Home Assistant."""
+        await super().async_added_to_hass()
+        if (state := await self.async_get_last_state()) is not None:
+            self._attr_is_on = state.state == "on"

@@ -394,6 +394,9 @@
     }
   },
   "switch": {
+    "smart_control": {
+      "name": "Automatische regeling"
+    },
     "lamp_switch": {
       "name": "Led"
     },

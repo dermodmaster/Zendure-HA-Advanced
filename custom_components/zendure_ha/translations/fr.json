@@ -446,6 +446,9 @@
       }
     },
     "switch": {
+      "smart_control": {
+        "name": "Régulation automatique"
+      },
       "lamp_switch": {
         "name": "LED"
       },

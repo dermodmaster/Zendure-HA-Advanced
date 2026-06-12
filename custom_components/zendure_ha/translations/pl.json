@@ -494,6 +494,9 @@
       }
     },
     "switch": {
+      "smart_control": {
+        "name": "Sterowanie automatyczne"
+      },
       "lamp_switch": {
         "name": "LED"
       },

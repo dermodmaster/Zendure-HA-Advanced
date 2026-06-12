@@ -45,6 +45,7 @@ from .fusegroup import FuseGroup
 from .number import ZendureRestoreNumber
 from .select import ZendureRestoreSelect, ZendureSelect
 from .sensor import ZendureSensor
+from .switch import ZendureRestoreSwitch
 
 SCAN_INTERVAL = timedelta(seconds=60)
 
@@ -129,6 +130,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             ),
         )
         self.operationstate = ZendureSensor(self, "operation_state")
+        self.enabled = ZendureRestoreSwitch(self, "smart_control", self.update_enabled, value=True)
         self.manualpower = ZendureRestoreNumber(self, "manual_power", None, None, "W", "power", 12000, -12000, NumberMode.BOX, True)
         self.surplus_offset = ZendureRestoreNumber(self, "surplus_offset", None, None, "W", "power", 2000, 0, NumberMode.BOX, True)
         self.availableKwh = ZendureSensor(self, "available_kwh", None, "kWh", "energy_storage", None, 1)
@@ -275,6 +277,19 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                 for d in fg.devices:
                     d.fuseGrp = fg
                 self.fuseGroups.append(fg)
+
+    async def update_enabled(self, entity: ZendureRestoreSwitch, value: Any) -> None:
+        """Enable or disable the automatic power control."""
+        entity.update_value(value)
+        _LOGGER.info("Smart control %s", "enabled" if value else "disabled")
+        if value:
+            # resume: let the solar surplus mode probe again on the next reading
+            self.surplus_dirty = self.operation == ManagerMode.SOLAR_SURPLUS
+        else:
+            # pause: stop all devices and report the OFF state
+            self.operationstate.update_value(ManagerState.OFF.value)
+            for d in self.devices:
+                await d.power_off()
 
     async def update_operation(self, entity: ZendureSelect, _operation: Any) -> None:
         operation = ManagerMode(entity.value)
@@ -512,6 +527,11 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
 
     async def powerChanged(self, p1: int, isFast: bool, time: datetime) -> None:
         """Return the distribution setpoint."""
+        # master switch: pause all automatic control while disabled
+        if not self.enabled.is_on:
+            self.operationstate.update_value(ManagerState.OFF.value)
+            return
+
         availableKwh = 0
         setpoint = p1
         power = 0
