@@ -18,6 +18,11 @@
         "data": {
           "token": "Zendure Token",
           "p1meter": "P1 Sensor for smart matching",
+          "pv_dcpower": "Primary PV: Total DC Power sensor (Solar Surplus)",
+          "pv_load": "Primary PV: Load Power sensor (Solar Surplus)",
+          "pv_meter": "Primary PV: Meter active power sensor (optional)",
+          "pv_battery": "Primary PV: Battery Power sensor (optional)",
+          "pv_soc": "Primary PV: Battery state of charge sensor (optional)",
           "mqttlog": "Log MQTT communication",
           "mqttlocal": "Use local MQTT",
           "auto_mqtt_user": "Automatically manage MQTT users",
@@ -40,6 +45,11 @@
         "data": {
           "token": "Zendure Token",
           "p1meter": "P1 Sensor for smart matching",
+          "pv_dcpower": "Primary PV: Total DC Power sensor (Solar Surplus)",
+          "pv_load": "Primary PV: Load Power sensor (Solar Surplus)",
+          "pv_meter": "Primary PV: Meter active power sensor (optional)",
+          "pv_battery": "Primary PV: Battery Power sensor (optional)",
+          "pv_soc": "Primary PV: Battery state of charge sensor (optional)",
           "mqttlog": "Log MQTT communication",
           "mqttlocal": "Use local MQTT",
           "auto_mqtt_user": "Automatically manage MQTT users",
@@ -54,6 +64,11 @@
       "init": {
         "data": {
           "p1meter": "P1 Sensor for smart matching",
+          "pv_dcpower": "Primary PV: Total DC Power sensor (Solar Surplus)",
+          "pv_load": "Primary PV: Load Power sensor (Solar Surplus)",
+          "pv_meter": "Primary PV: Meter active power sensor (optional)",
+          "pv_battery": "Primary PV: Battery Power sensor (optional)",
+          "pv_soc": "Primary PV: Battery state of charge sensor (optional)",
           "mqttlog": "Log MQTT communication",
           "auto_mqtt_user": "Automatically manage MQTT users"
         },
@@ -106,6 +121,9 @@
       },
       "manual_power": {
         "name": "Manual Power"
+      },
+      "surplus_offset": {
+        "name": "Solar Surplus Offset"
       },
       "min_soc": {
         "name": "SoC Minimum"
@@ -445,7 +463,8 @@
           "smart": "Smart Matching",
           "smart_discharging": "Smart discharge only",
           "smart_charging": "Smart charge only",
-          "store_solar": "Store Solar"
+          "store_solar": "Store Solar",
+          "solar_surplus": "Solar Surplus (no feed-in)"
         }
       },
       "pass_mode": {
