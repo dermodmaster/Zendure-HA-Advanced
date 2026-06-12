@@ -301,7 +301,8 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         await self.update_operation(self.operationmode, target.value)
 
     async def update_operation(self, entity: ZendureSelect, _operation: Any) -> None:
-        operation = ManagerMode(entity.value)
+        # guard against an invalid/restored option value (entity.value is None) -> keep automation off
+        operation = ManagerMode(entity.value) if entity.value is not None else ManagerMode.OFF
         _LOGGER.info("Update operation: %s from: %s", operation, self.operation)
 
         self.operation = operation
