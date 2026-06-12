@@ -135,6 +135,12 @@
       "available_kwh": {
         "name": "Available Energy"
       },
+      "surplus_target": {
+        "name": "Solar Surplus Charge Target"
+      },
+      "surplus_margin": {
+        "name": "Solar Surplus Margin"
+      },
       "total_kwh": {
         "name": "Total Battery Capacity"
       },

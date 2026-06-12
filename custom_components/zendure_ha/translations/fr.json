@@ -125,6 +125,12 @@
       "available_kwh": {
         "name": "Énergie disponible"
       },
+      "surplus_target": {
+        "name": "Cible de charge surplus solaire"
+      },
+      "surplus_margin": {
+        "name": "Marge surplus solaire"
+      },
       "auto_model": {
         "name": "Programme de batterie",
         "state": {

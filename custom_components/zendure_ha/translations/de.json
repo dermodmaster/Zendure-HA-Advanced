@@ -124,6 +124,12 @@
       "available_kwh": {
         "name": "Verfügbare Energie"
       },
+      "surplus_target": {
+        "name": "Solar-Überschuss Ladeziel"
+      },
+      "surplus_margin": {
+        "name": "Solar-Überschuss Marge"
+      },
       "total_kwh": {
         "name": "Gesamtkapazität Batterie"
       },

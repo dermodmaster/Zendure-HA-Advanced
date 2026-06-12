@@ -134,6 +134,8 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.availableKwh = ZendureSensor(self, "available_kwh", None, "kWh", "energy_storage", None, 1)
         self.totalKwh = ZendureSensor(self, "total_kwh", None, "kWh", "energy_storage", "measurement", 2)
         self.power = ZendureSensor(self, "power", None, "W", "power", "measurement", 0)
+        self.surplusTarget = ZendureSensor(self, "surplus_target", None, "W", "power", "measurement", 0)
+        self.surplusMargin = ZendureSensor(self, "surplus_margin", None, "W", "power", "measurement", 0)
 
         # load devices
         for dev in data["deviceList"]:
@@ -737,9 +739,12 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             await self.power_discharge(max(0, p1))
             return
 
+        # publish the live surplus margin (Total DC - Load) for visibility in HA
+        margin = int(self.pv_dcpower - self.pv_load)
+        self.surplusMargin.update_value(margin)
+
         # advance the probing step only on a fresh reading after the settle time
         if self.surplus_dirty and time > self.surplus_next:
-            margin = int(self.pv_dcpower - self.pv_load)
 
             # the offset is only reserved while the primary battery can still charge;
             # when it is full there is nothing to reserve and we probe the full margin
@@ -760,6 +765,9 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
 
             self.surplus_dirty = False
             self.surplus_next = time + SmartMode.SURPLUS_SETTLE
+
+        # publish the current charge target for visibility in HA
+        self.surplusTarget.update_value(self.surplus_charge)
 
         if self.surplus_charge > 0:
             await self.power_charge(-self.surplus_charge, time)

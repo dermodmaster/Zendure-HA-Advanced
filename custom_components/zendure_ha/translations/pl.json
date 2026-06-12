@@ -138,6 +138,12 @@
       "available_kwh": {
         "name": "Dostępna energia"
       },
+      "surplus_target": {
+        "name": "Cel ładowania nadwyżki solarnej"
+      },
+      "surplus_margin": {
+        "name": "Margines nadwyżki solarnej"
+      },
       "total_kwh": {
         "name": "Całkowita pojemność baterii"
       },

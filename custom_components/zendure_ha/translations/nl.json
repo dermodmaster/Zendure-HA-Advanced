@@ -116,6 +116,12 @@
       "available_kwh": {
         "name": "Beschikbare Energie"
       },
+      "surplus_target": {
+        "name": "Zonneoverschot laaddoel"
+      },
+      "surplus_margin": {
+        "name": "Zonneoverschot marge"
+      },
       "auto_model": {
         "name": "Batterijprogramma",
         "state": {
