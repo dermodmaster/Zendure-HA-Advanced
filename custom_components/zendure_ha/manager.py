@@ -124,12 +124,6 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             return
         self.attr_device_info["sw_version"] = integration.manifest.get("version", "unknown")
 
-        self.operationmode = ZendureRestoreSelect(
-            self,
-            "Operation",
-            {0: "off", 1: "manual", 2: "smart", 3: "smart_discharging", 4: "smart_charging", 5: "store_solar", 6: "solar_surplus"},
-            self.update_operation,
-        )
         self.operationstate = ZendureSensor(self, "operation_state")
         self.manualpower = ZendureRestoreNumber(self, "manual_power", None, None, "W", "power", 12000, -12000, NumberMode.BOX, True)
         self.surplus_offset = ZendureRestoreNumber(self, "surplus_offset", None, None, "W", "power", 2000, 0, NumberMode.BOX, True)
@@ -146,6 +140,15 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.availableKwh = ZendureSensor(self, "available_kwh", None, "kWh", "energy_storage", None, 1)
         self.totalKwh = ZendureSensor(self, "total_kwh", None, "kWh", "energy_storage", "measurement", 2)
         self.power = ZendureSensor(self, "power", None, "W", "power", "measurement", 0)
+
+        # The operation select is created last: its restore callback (update_operation) touches the
+        # automation/diagnostic entities above, so they must already exist when it fires on startup.
+        self.operationmode = ZendureRestoreSelect(
+            self,
+            "Operation",
+            {0: "off", 1: "manual", 2: "smart", 3: "smart_discharging", 4: "smart_charging", 5: "store_solar", 6: "solar_surplus"},
+            self.update_operation,
+        )
 
         # load devices
         for dev in data["deviceList"]:
@@ -317,9 +320,11 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         # remember the last active mode (from the select or the switch) so the master switch restores it
         if active:
             self.operation_resume = operation
-        self.automationActive.update_value(active)
-        self.automationSwitch.update_value(active)
-        self.surplusTarget.update_value(0)
+        # these entities are created in loadDevices; guard in case the callback fires before they exist
+        if getattr(self, "automationActive", None) is not None:
+            self.automationActive.update_value(active)
+            self.automationSwitch.update_value(active)
+            self.surplusTarget.update_value(0)
 
         if self.p1meterEvent is not None:
             if operation != ManagerMode.OFF and (len(self.devices) == 0 or all(not d.online for d in self.devices)):
