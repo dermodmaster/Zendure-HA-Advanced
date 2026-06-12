@@ -127,6 +127,9 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.operationstate = ZendureSensor(self, "operation_state")
         self.manualpower = ZendureRestoreNumber(self, "manual_power", None, None, "W", "power", 12000, -12000, NumberMode.BOX, True)
         self.surplus_offset = ZendureRestoreNumber(self, "surplus_offset", None, None, "W", "power", 2000, 0, NumberMode.BOX, True)
+        # probing step for the solar surplus mode (0 = disabled); seed a sensible default on first start
+        self.surplus_probe = ZendureRestoreNumber(self, "surplus_probe", None, None, "W", "power", 2000, 0, NumberMode.BOX, True)
+        self.surplus_probe._attr_native_value = 100  # noqa: SLF001
 
         # Automation status + master switch (charge/discharge control on/off)
         self.automationActive = ZendureBinarySensor(self, "automation_active", None, "running")
@@ -790,10 +793,12 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
 
     async def power_surplus(self, p1: int, time: datetime) -> None:
         """Charge from PV surplus of the primary system when feed-in is not possible."""
-        # The primary grid meter never goes negative (no feed-in), so the available
-        # surplus is derived from the primary inverter: surplus = TotalDC - Load.
-        # The charge target is approached step by step ("herantasten") and only advanced
-        # once a fresh sensor reading has arrived after the previous step (settle time).
+        # A curtailing inverter (primary battery full, no/limited feed-in) throttles its
+        # production down to the load, so TotalDC - Load is ~0 and hides the available surplus.
+        # Therefore, while the primary battery is full and not being loaded, the charge target is
+        # probed upward step by step ("herantasten") so the inverter ramps production up; as soon
+        # as the primary battery starts discharging (or the grid is imported from) we took too much
+        # and back off. Each step is advanced only on a fresh reading after the settle time.
 
         # without the primary PV sensors we can only cover the base load via the grid meter
         if self.pv_dcpower is None or self.pv_load is None:
@@ -805,25 +810,39 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             margin = int(self.pv_dcpower - self.pv_load)
 
             # the offset is only reserved while the primary battery can still charge;
-            # when it is full there is nothing to reserve and we probe the full margin
+            # when it is full there is nothing to reserve
             primary_full = (self.pv_soc is not None and self.pv_soc >= SmartMode.SURPLUS_SOCFULL) or (
                 self.pv_soc is None and self.pv_battery is not None and abs(self.pv_battery) < SmartMode.SURPLUS_DEADBAND and margin > 0
             )
             eff_offset = 0 if primary_full else int(self.surplus_offset.asNumber)
-            step = margin - eff_offset
+
+            # feedback that we took too much: the primary battery being loaded (preferred; neg = charging,
+            # so a positive value means it is discharging to supply load) or, as a fallback, real grid import.
+            if self.pv_battery is not None and self.pv_battery > SmartMode.SURPLUS_DEADBAND:
+                overshoot = int(self.pv_battery)
+            elif self.pv_meter is not None and self.pv_meter > SmartMode.SURPLUS_DEADBAND:
+                overshoot = int(self.pv_meter)
+            else:
+                overshoot = 0
+
+            if overshoot > 0:
+                # primary battery is being loaded / grid import -> reduce the charge target
+                step = -overshoot
+            elif primary_full:
+                # primary battery full and not loaded -> probe upward to harvest the curtailed surplus
+                step = max(margin - eff_offset, int(self.surplus_probe.asNumber))
+            else:
+                # primary battery not full yet -> only take what exceeds the reserved offset
+                step = margin - eff_offset
 
             self.surplusMargin.update_value(margin)
             self.surplusEffOffset.update_value(eff_offset)
             self.surplusPrimaryFull.update_value(1 if primary_full else 0)
 
-            # safety: real grid import despite charging means we took too much -> back off
-            if self.pv_meter is not None and self.pv_meter > SmartMode.SURPLUS_DEADBAND:
-                step -= int(self.pv_meter)
-
             if abs(step) >= SmartMode.SURPLUS_DEADBAND:
                 max_charge = -sum(d.charge_limit for d in self.devices)
                 self.surplus_charge = max(0, min(self.surplus_charge + step, max_charge))
-                _LOGGER.info("Surplus => margin:%sW offset:%sW step:%sW target:%sW", margin, eff_offset, step, self.surplus_charge)
+                _LOGGER.info("Surplus => margin:%sW offset:%sW overshoot:%sW step:%sW target:%sW", margin, eff_offset, overshoot, step, self.surplus_charge)
 
             self.surplus_dirty = False
             self.surplus_next = time + SmartMode.SURPLUS_SETTLE

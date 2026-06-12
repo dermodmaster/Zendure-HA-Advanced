@@ -127,6 +127,9 @@
       "surplus_offset": {
         "name": "Solar Surplus Offset"
       },
+      "surplus_probe": {
+        "name": "Solar Surplus Probing Step"
+      },
       "min_soc": {
         "name": "SoC Minimum"
       },

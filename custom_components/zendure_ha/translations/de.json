@@ -116,6 +116,9 @@
       "surplus_offset": {
         "name": "Solar-Überschuss Offset"
       },
+      "surplus_probe": {
+        "name": "Solar-Überschuss Probing-Schritt"
+      },
       "min_soc": {
         "name": "SoC-Minimum"
       },
