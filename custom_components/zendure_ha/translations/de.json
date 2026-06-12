@@ -95,6 +95,12 @@
       },
       "hems_state": {
         "name": "HEMS aktiv"
+      },
+      "automation_active": {
+        "name": "Automatik aktiv"
+      },
+      "surplus_primary_full": {
+        "name": "Primärbatterie voll"
       }
     },
     "number": {
@@ -126,6 +132,30 @@
       },
       "total_kwh": {
         "name": "Gesamtkapazität Batterie"
+      },
+      "surplus_target": {
+        "name": "Solar-Überschuss Ziel-Ladeleistung"
+      },
+      "surplus_margin": {
+        "name": "Solar-Überschuss Marge"
+      },
+      "surplus_eff_offset": {
+        "name": "Effektiver Solar-Überschuss Offset"
+      },
+      "pv_dcpower": {
+        "name": "Primär-PV Gesamt-DC-Leistung"
+      },
+      "pv_load": {
+        "name": "Primär-PV Lastleistung"
+      },
+      "pv_meter": {
+        "name": "Primär-PV Zählerleistung"
+      },
+      "pv_battery": {
+        "name": "Primär-PV Batterieleistung"
+      },
+      "pv_soc": {
+        "name": "Primär-PV Batterie-SoC"
       },
       "auto_model": {
         "name": "Energieplan",
@@ -493,6 +523,9 @@
       },
       "fanmode": {
         "name": "Intelligenter Lüfter"
+      },
+      "automation": {
+        "name": "Automatik"
       }
     }
   },

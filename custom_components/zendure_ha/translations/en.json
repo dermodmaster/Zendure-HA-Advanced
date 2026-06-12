@@ -106,6 +106,12 @@
       },
       "hems_state": {
         "name": "HEMS Active"
+      },
+      "automation_active": {
+        "name": "Automation Active"
+      },
+      "surplus_primary_full": {
+        "name": "Primary Battery Full"
       }
     },
     "number": {
@@ -137,6 +143,30 @@
       },
       "total_kwh": {
         "name": "Total Battery Capacity"
+      },
+      "surplus_target": {
+        "name": "Solar Surplus Target"
+      },
+      "surplus_margin": {
+        "name": "Solar Surplus Margin"
+      },
+      "surplus_eff_offset": {
+        "name": "Solar Surplus Effective Offset"
+      },
+      "pv_dcpower": {
+        "name": "Primary PV Total DC Power"
+      },
+      "pv_load": {
+        "name": "Primary PV Load Power"
+      },
+      "pv_meter": {
+        "name": "Primary PV Meter Power"
+      },
+      "pv_battery": {
+        "name": "Primary PV Battery Power"
+      },
+      "pv_soc": {
+        "name": "Primary PV Battery SoC"
       },
       "auto_model": {
         "name": "Battery Program",
@@ -504,6 +534,9 @@
       },
       "fanmode": {
         "name": "Smart Fan"
+      },
+      "automation": {
+        "name": "Automation"
       }
     }
   },
