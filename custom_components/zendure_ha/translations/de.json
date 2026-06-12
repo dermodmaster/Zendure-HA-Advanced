@@ -14,6 +14,11 @@
         "data": {
           "token": "Zendure Token",
           "p1meter": "P1 Sensor für Smart Matching",
+          "pv_dcpower": "Primär-PV: Sensor Gesamt-DC-Leistung (Solar-Überschuss)",
+          "pv_load": "Primär-PV: Sensor Lastleistung (Solar-Überschuss)",
+          "pv_meter": "Primär-PV: Sensor Netzleistung (optional)",
+          "pv_battery": "Primär-PV: Sensor Akkuleistung (optional)",
+          "pv_soc": "Primär-PV: Sensor Akku-Ladestand (optional)",
           "mqttlog": "MQTT-Kommunikation loggen",
           "mqttlocal": "Lokales MQTT verwenden",
           "auto_mqtt_user": "MQTT-Benutzer automatisch verwalten",
@@ -25,6 +30,11 @@
         "data": {
           "token": "Zendure Token",
           "p1meter": "P1 Sensor für Smart Matching",
+          "pv_dcpower": "Primär-PV: Sensor Gesamt-DC-Leistung (Solar-Überschuss)",
+          "pv_load": "Primär-PV: Sensor Lastleistung (Solar-Überschuss)",
+          "pv_meter": "Primär-PV: Sensor Netzleistung (optional)",
+          "pv_battery": "Primär-PV: Sensor Akkuleistung (optional)",
+          "pv_soc": "Primär-PV: Sensor Akku-Ladestand (optional)",
           "mqttlog": "MQTT-Kommunikation loggen",
           "mqttlocal": "Lokales MQTT verwenden",
           "auto_mqtt_user": "MQTT-Benutzer automatisch verwalten",
@@ -39,6 +49,11 @@
       "init": {
         "data": {
           "p1meter": "P1 Sensor für Smart Matching",
+          "pv_dcpower": "Primär-PV: Sensor Gesamt-DC-Leistung (Solar-Überschuss)",
+          "pv_load": "Primär-PV: Sensor Lastleistung (Solar-Überschuss)",
+          "pv_meter": "Primär-PV: Sensor Netzleistung (optional)",
+          "pv_battery": "Primär-PV: Sensor Akkuleistung (optional)",
+          "pv_soc": "Primär-PV: Sensor Akku-Ladestand (optional)",
           "mqttlog": "MQTT-Kommunikation loggen",
           "auto_mqtt_user": "MQTT-Benutzer automatisch verwalten"
         },
@@ -91,6 +106,9 @@
       },
       "manual_power": {
         "name": "Manuelle Leistung"
+      },
+      "surplus_offset": {
+        "name": "Solar-Überschuss Offset"
       },
       "min_soc": {
         "name": "SoC-Minimum"
@@ -412,7 +430,8 @@
           "smart": "Smarte Leistungsregelung",
           "smart_discharging": "Smartes nur Entladen",
           "smart_charging": "Smartes nur Laden",
-          "store_solar": "Solar speichern"
+          "store_solar": "Solar speichern",
+          "solar_surplus": "Solar-Überschuss (keine Einspeisung)"
         }
       },
       "pass_mode": {

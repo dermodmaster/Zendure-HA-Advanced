@@ -14,6 +14,11 @@
         "data": {
           "token": "Token Zendure",
           "p1meter": "Czujnik P1 do inteligentnego dopasowania",
+          "pv_dcpower": "Pierwotny PV: czujnik całkowitej mocy DC (nadwyżka solarna)",
+          "pv_load": "Pierwotny PV: czujnik mocy obciążenia (nadwyżka solarna)",
+          "pv_meter": "Pierwotny PV: czujnik mocy sieci (opcjonalnie)",
+          "pv_battery": "Pierwotny PV: czujnik mocy baterii (opcjonalnie)",
+          "pv_soc": "Pierwotny PV: czujnik stanu naładowania baterii (opcjonalnie)",
           "mqttlog": "Rejestruj komunikację MQTT",
           "mqttlocal": "Użyj lokalnego MQTT",
           "auto_mqtt_user": "Automatycznie zarządzaj użytkownikami MQTT",
@@ -36,6 +41,11 @@
         "data": {
           "token": "Token Zendure",
           "p1meter": "Czujnik P1 do inteligentnego dopasowania",
+          "pv_dcpower": "Pierwotny PV: czujnik całkowitej mocy DC (nadwyżka solarna)",
+          "pv_load": "Pierwotny PV: czujnik mocy obciążenia (nadwyżka solarna)",
+          "pv_meter": "Pierwotny PV: czujnik mocy sieci (opcjonalnie)",
+          "pv_battery": "Pierwotny PV: czujnik mocy baterii (opcjonalnie)",
+          "pv_soc": "Pierwotny PV: czujnik stanu naładowania baterii (opcjonalnie)",
           "mqttlog": "Rejestruj komunikację MQTT",
           "mqttlocal": "Użyj lokalnego MQTT",
           "auto_mqtt_user": "Automatycznie zarządzaj użytkownikami MQTT",
@@ -50,6 +60,11 @@
       "init": {
         "data": {
           "p1meter": "Czujnik P1 do inteligentnego dopasowania",
+          "pv_dcpower": "Pierwotny PV: czujnik całkowitej mocy DC (nadwyżka solarna)",
+          "pv_load": "Pierwotny PV: czujnik mocy obciążenia (nadwyżka solarna)",
+          "pv_meter": "Pierwotny PV: czujnik mocy sieci (opcjonalnie)",
+          "pv_battery": "Pierwotny PV: czujnik mocy baterii (opcjonalnie)",
+          "pv_soc": "Pierwotny PV: czujnik stanu naładowania baterii (opcjonalnie)",
           "mqttlog": "Rejestruj komunikację MQTT",
           "auto_mqtt_user": "Automatycznie zarządzaj użytkownikami MQTT"
         },
@@ -102,6 +117,9 @@
       },
       "manual_power": {
         "name": "Moc ustawiana ręcznie"
+      },
+      "surplus_offset": {
+        "name": "Przesunięcie nadwyżki solarnej"
       },
       "min_soc": {
         "name": "Minimalne SoC"
@@ -424,7 +442,8 @@
           "smart": "Inteligentne dopasowanie",
           "smart_discharging": "Inteligentne rozładowanie",
           "smart_charging": "Inteligentne ładowanie",
-          "store_solar": "Magazynowanie energii słonecznej"
+          "store_solar": "Magazynowanie energii słonecznej",
+          "solar_surplus": "Nadwyżka solarna (bez oddawania do sieci)"
         }
       },
       "pass_mode": {

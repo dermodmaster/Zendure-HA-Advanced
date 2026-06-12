@@ -43,6 +43,7 @@ async def update_listener(_hass: HomeAssistant, entry: ZendureConfigEntry) -> No
     Api.mqttLogging = entry.data.get(CONF_MQTTLOG, False)
     ZendureManager.simulation = entry.data.get(CONF_SIM, False)
     entry.runtime_data.update_p1meter(entry.data.get(CONF_P1METER, "sensor.power_actual"))
+    entry.runtime_data.update_pv_sensors(entry.data)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ZendureConfigEntry) -> bool:
@@ -60,6 +61,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ZendureConfigEntry) -> 
                 c.zendure.disconnect()
             c.zendure = None
         manager.update_p1meter(None)
+        manager.update_pv_sensors({})
         manager.fuseGroups.clear()
         manager.devices.clear()
     return result

@@ -15,6 +15,11 @@
           "username": "Zendure Gebruikersnaam",
           "password": "Zendure Wachtwoord",
           "p1meter": "P1 Sensor voor slimme matching",
+          "pv_dcpower": "Primair PV: sensor totale DC-vermogen (zonneoverschot)",
+          "pv_load": "Primair PV: sensor belastingsvermogen (zonneoverschot)",
+          "pv_meter": "Primair PV: sensor netvermogen (optioneel)",
+          "pv_battery": "Primair PV: sensor batterijvermogen (optioneel)",
+          "pv_soc": "Primair PV: sensor batterijlading (optioneel)",
           "mqttlog": "MQTT-Communicatie loggen",
           "mqttlocal": "Lokale MQTT gebruiken",
           "auto_mqtt_user": "MQTT-gebruikers automatisch beheren",
@@ -38,6 +43,11 @@
           "username": "Zendure Gebruikersnaam",
           "password": "Zendure Wachtwoord",
           "p1meter": "P1 Sensor voor slimme matching",
+          "pv_dcpower": "Primair PV: sensor totale DC-vermogen (zonneoverschot)",
+          "pv_load": "Primair PV: sensor belastingsvermogen (zonneoverschot)",
+          "pv_meter": "Primair PV: sensor netvermogen (optioneel)",
+          "pv_battery": "Primair PV: sensor batterijvermogen (optioneel)",
+          "pv_soc": "Primair PV: sensor batterijlading (optioneel)",
           "mqttlog": "MQTT-Communicatie loggen",
           "mqttlocal": "Lokale MQTT gebruiken",
           "auto_mqtt_user": "MQTT-gebruikers automatisch beheren",
@@ -88,6 +98,9 @@
       },
       "manual_power": {
         "name": "Handmatig vermogen"
+      },
+      "surplus_offset": {
+        "name": "Zonneoverschot offset"
       },
       "min_soc": {
         "name": "SOC Minimaal"
@@ -336,7 +349,8 @@
           "smart": "Slimme Matching",
           "smart_discharging": "Slim ontladen",
           "smart_charging": "Slim opladen",
-          "store_solar": "Zonne-energie opslaan"
+          "store_solar": "Zonne-energie opslaan",
+          "solar_surplus": "Zonneoverschot (geen teruglevering)"
         }
       },
       "pass_mode": {
