@@ -103,7 +103,9 @@ class ZendureRestoreSelect(ZendureSelect, RestoreEntity):
     async def async_added_to_hass(self) -> None:
         """Handle entity which will be added."""
         await super().async_added_to_hass()
-        if state := await self.async_get_last_state():
+        # only restore a state that is still a valid option, otherwise fall back to the
+        # default (e.g. a stored "unavailable"/"unknown" would map to no key and crash onchanged)
+        if (state := await self.async_get_last_state()) and state.state in self._attr_options:
             self._attr_current_option = state.state
         else:
             self._attr_current_option = self._attr_options[0]

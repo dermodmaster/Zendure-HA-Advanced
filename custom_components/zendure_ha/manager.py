@@ -25,6 +25,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.loader import async_get_integration
 
 from .api import Api
+from .binary_sensor import ZendureBinarySensor
 from .const import (
     CONF_AUTO_MQTT_USER,
     CONF_P1METER,
@@ -45,6 +46,7 @@ from .fusegroup import FuseGroup
 from .number import ZendureRestoreNumber
 from .select import ZendureRestoreSelect, ZendureSelect
 from .sensor import ZendureSensor
+from .switch import ZendureSwitch
 
 SCAN_INTERVAL = timedelta(seconds=60)
 
@@ -66,6 +68,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         EntityDevice.__init__(self, hass, "Zendure Manager", "Zendure Manager")
         self.api = Api()
         self.operation: ManagerMode = ManagerMode.OFF
+        self.operation_resume: ManagerMode = ManagerMode.MATCHING  # mode restored when the automation switch is turned on again
         self.zero_next = datetime.min
         self.zero_fast = datetime.min
         self.check_reset = datetime.min
@@ -78,6 +81,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         # Solar surplus mode: read the primary PV system to charge without grid feed-in
         self.pvEvents: list[Callable[[], None]] = []
         self.pv_entities: dict[str, str] = {}
+        self.pv_sensors: dict[str, ZendureSensor] = {}
         self.pv_dcpower: float | None = None
         self.pv_load: float | None = None
         self.pv_meter: float | None = None
@@ -120,20 +124,34 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             return
         self.attr_device_info["sw_version"] = integration.manifest.get("version", "unknown")
 
-        self.operationmode = (
-            ZendureRestoreSelect(
-                self,
-                "Operation",
-                {0: "off", 1: "manual", 2: "smart", 3: "smart_discharging", 4: "smart_charging", 5: "store_solar", 6: "solar_surplus"},
-                self.update_operation,
-            ),
-        )
         self.operationstate = ZendureSensor(self, "operation_state")
         self.manualpower = ZendureRestoreNumber(self, "manual_power", None, None, "W", "power", 12000, -12000, NumberMode.BOX, True)
         self.surplus_offset = ZendureRestoreNumber(self, "surplus_offset", None, None, "W", "power", 2000, 0, NumberMode.BOX, True)
+        # probing step for the solar surplus mode (0 = disabled); seed a sensible default on first start
+        self.surplus_probe = ZendureRestoreNumber(self, "surplus_probe", None, None, "W", "power", 2000, 0, NumberMode.BOX, True)
+        self.surplus_probe._attr_native_value = 100  # noqa: SLF001
+
+        # Automation status + master switch (charge/discharge control on/off)
+        self.automationActive = ZendureBinarySensor(self, "automation_active", None, "running")
+        self.automationSwitch = ZendureSwitch(self, "automation", self.update_automation, None, "switch", True)
+
+        # Solar surplus diagnostics
+        self.surplusTarget = ZendureSensor(self, "surplus_target", None, "W", "power", "measurement", 0)
+        self.surplusMargin = ZendureSensor(self, "surplus_margin", None, "W", "power", "measurement", 0)
+        self.surplusEffOffset = ZendureSensor(self, "surplus_eff_offset", None, "W", "power", "measurement", 0)
+        self.surplusPrimaryFull = ZendureBinarySensor(self, "surplus_primary_full", None, None)
         self.availableKwh = ZendureSensor(self, "available_kwh", None, "kWh", "energy_storage", None, 1)
         self.totalKwh = ZendureSensor(self, "total_kwh", None, "kWh", "energy_storage", "measurement", 2)
         self.power = ZendureSensor(self, "power", None, "W", "power", "measurement", 0)
+
+        # The operation select is created last: its restore callback (update_operation) touches the
+        # automation/diagnostic entities above, so they must already exist when it fires on startup.
+        self.operationmode = ZendureRestoreSelect(
+            self,
+            "Operation",
+            {0: "off", 1: "manual", 2: "smart", 3: "smart_discharging", 4: "smart_charging", 5: "store_solar", 6: "solar_surplus"},
+            self.update_operation,
+        )
 
         # load devices
         for dev in data["deviceList"]:
@@ -274,8 +292,23 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                     d.fuseGrp = fg
                 self.fuseGroups.append(fg)
 
+    async def update_automation(self, _entity: ZendureSwitch, value: Any) -> None:
+        """Master switch: enable/disable the charge/discharge automation."""
+        if value:
+            # turn on -> restore the last active operation mode
+            target = self.operation_resume if self.operation_resume != ManagerMode.OFF else ManagerMode.MATCHING
+        else:
+            # turn off -> remember the current mode and hand control back to the device / Zendure app
+            if self.operation != ManagerMode.OFF:
+                self.operation_resume = self.operation
+            target = ManagerMode.OFF
+
+        self.operationmode.update_value(target.value)
+        await self.update_operation(self.operationmode, target.value)
+
     async def update_operation(self, entity: ZendureSelect, _operation: Any) -> None:
-        operation = ManagerMode(entity.value)
+        # guard against an invalid/restored option value (entity.value is None) -> keep automation off
+        operation = ManagerMode(entity.value) if entity.value is not None else ManagerMode.OFF
         _LOGGER.info("Update operation: %s from: %s", operation, self.operation)
 
         self.operation = operation
@@ -284,6 +317,17 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.surplus_charge = 0
         self.surplus_next = datetime.min
         self.surplus_dirty = operation == ManagerMode.SOLAR_SURPLUS
+
+        # reflect the automation status on the status sensor and master switch
+        active = operation != ManagerMode.OFF
+        # remember the last active mode (from the select or the switch) so the master switch restores it
+        if active:
+            self.operation_resume = operation
+        # these entities are created in loadDevices; guard in case the callback fires before they exist
+        if getattr(self, "automationActive", None) is not None:
+            self.automationActive.update_value(active)
+            self.automationSwitch.update_value(active)
+            self.surplusTarget.update_value(0)
 
         if self.p1meterEvent is not None:
             if operation != ManagerMode.OFF and (len(self.devices) == 0 or all(not d.online for d in self.devices)):
@@ -353,6 +397,15 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             unsub()
         self.pvEvents = []
 
+        # units used to mirror each configured PV sensor as an integration sensor
+        pv_units = {
+            "pv_dcpower": ("W", "power"),
+            "pv_load": ("W", "power"),
+            "pv_meter": ("W", "power"),
+            "pv_battery": ("W", "power"),
+            "pv_soc": ("%", "battery"),
+        }
+
         # map each configured entity to the attribute that caches its latest value
         self.pv_entities: dict[str, str] = {}
         for conf, attr in (
@@ -366,10 +419,16 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             if not entity_id:
                 continue
             self.pv_entities[entity_id] = attr
+            # mirror the configured sensor so its value is visible on the manager device
+            if attr not in self.pv_sensors:
+                uom, deviceclass = pv_units[attr]
+                self.pv_sensors[attr] = ZendureSensor(self, attr, None, uom, deviceclass, "measurement")
             # seed the cache with the current state if available
             if (state := self.hass.states.get(entity_id)) is not None:
                 try:
-                    setattr(self, attr, float(state.state))
+                    value = float(state.state)
+                    setattr(self, attr, value)
+                    self.pv_sensors[attr].update_value(value)
                 except (ValueError, TypeError):
                     pass
 
@@ -461,9 +520,16 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         if (attr := self.pv_entities.get(new_state.entity_id)) is None:
             return
         try:
-            setattr(self, attr, float(new_state.state))
+            value = float(new_state.state)
+            setattr(self, attr, value)
         except (ValueError, TypeError):
             return
+
+        # mirror the value and keep the live surplus margin up to date (independent of mode)
+        if (sensor := self.pv_sensors.get(attr)) is not None:
+            sensor.update_value(value)
+        if self.pv_dcpower is not None and self.pv_load is not None:
+            self.surplusMargin.update_value(int(self.pv_dcpower - self.pv_load))
 
         # only the solar surplus mode reacts to the primary PV sensors
         if self.operation != ManagerMode.SOLAR_SURPLUS:
@@ -727,10 +793,12 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
 
     async def power_surplus(self, p1: int, time: datetime) -> None:
         """Charge from PV surplus of the primary system when feed-in is not possible."""
-        # The primary grid meter never goes negative (no feed-in), so the available
-        # surplus is derived from the primary inverter: surplus = TotalDC - Load.
-        # The charge target is approached step by step ("herantasten") and only advanced
-        # once a fresh sensor reading has arrived after the previous step (settle time).
+        # A curtailing inverter (primary battery full, no/limited feed-in) throttles its
+        # production down to the load, so TotalDC - Load is ~0 and hides the available surplus.
+        # Therefore, while the primary battery is full and not being loaded, the charge target is
+        # probed upward step by step ("herantasten") so the inverter ramps production up; as soon
+        # as the primary battery starts discharging (or the grid is imported from) we took too much
+        # and back off. Each step is advanced only on a fresh reading after the settle time.
 
         # without the primary PV sensors we can only cover the base load via the grid meter
         if self.pv_dcpower is None or self.pv_load is None:
@@ -742,24 +810,44 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             margin = int(self.pv_dcpower - self.pv_load)
 
             # the offset is only reserved while the primary battery can still charge;
-            # when it is full there is nothing to reserve and we probe the full margin
+            # when it is full there is nothing to reserve
             primary_full = (self.pv_soc is not None and self.pv_soc >= SmartMode.SURPLUS_SOCFULL) or (
                 self.pv_soc is None and self.pv_battery is not None and abs(self.pv_battery) < SmartMode.SURPLUS_DEADBAND and margin > 0
             )
             eff_offset = 0 if primary_full else int(self.surplus_offset.asNumber)
-            step = margin - eff_offset
 
-            # safety: real grid import despite charging means we took too much -> back off
-            if self.pv_meter is not None and self.pv_meter > SmartMode.SURPLUS_DEADBAND:
-                step -= int(self.pv_meter)
+            # feedback that we took too much: the primary battery being loaded (preferred; neg = charging,
+            # so a positive value means it is discharging to supply load) or, as a fallback, real grid import.
+            if self.pv_battery is not None and self.pv_battery > SmartMode.SURPLUS_DEADBAND:
+                overshoot = int(self.pv_battery)
+            elif self.pv_meter is not None and self.pv_meter > SmartMode.SURPLUS_DEADBAND:
+                overshoot = int(self.pv_meter)
+            else:
+                overshoot = 0
+
+            if overshoot > 0:
+                # primary battery is being loaded / grid import -> reduce the charge target
+                step = -overshoot
+            elif primary_full:
+                # primary battery full and not loaded -> probe upward to harvest the curtailed surplus
+                step = max(margin - eff_offset, int(self.surplus_probe.asNumber))
+            else:
+                # primary battery not full yet -> only take what exceeds the reserved offset
+                step = margin - eff_offset
+
+            self.surplusMargin.update_value(margin)
+            self.surplusEffOffset.update_value(eff_offset)
+            self.surplusPrimaryFull.update_value(1 if primary_full else 0)
 
             if abs(step) >= SmartMode.SURPLUS_DEADBAND:
                 max_charge = -sum(d.charge_limit for d in self.devices)
                 self.surplus_charge = max(0, min(self.surplus_charge + step, max_charge))
-                _LOGGER.info("Surplus => margin:%sW offset:%sW step:%sW target:%sW", margin, eff_offset, step, self.surplus_charge)
+                _LOGGER.info("Surplus => margin:%sW offset:%sW overshoot:%sW step:%sW target:%sW", margin, eff_offset, overshoot, step, self.surplus_charge)
 
             self.surplus_dirty = False
             self.surplus_next = time + SmartMode.SURPLUS_SETTLE
+
+        self.surplusTarget.update_value(self.surplus_charge)
 
         if self.surplus_charge > 0:
             await self.power_charge(-self.surplus_charge, time)
