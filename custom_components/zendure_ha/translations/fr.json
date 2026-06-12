@@ -16,6 +16,11 @@
           "username": "Nom d'utilisateur Zendure",
           "password": "Mot de passe Zendure",
           "p1meter": "Capteur P1 pour le couplage intelligent",
+          "pv_dcpower": "PV primaire : capteur puissance DC totale (surplus solaire)",
+          "pv_load": "PV primaire : capteur puissance de charge (surplus solaire)",
+          "pv_meter": "PV primaire : capteur puissance réseau (optionnel)",
+          "pv_battery": "PV primaire : capteur puissance batterie (optionnel)",
+          "pv_soc": "PV primaire : capteur état de charge batterie (optionnel)",
           "mqttlog": "Journaliser la communication MQTT",
           "mqttlocal": "Utiliser MQTT local",
           "auto_mqtt_user": "Gérer automatiquement les utilisateurs MQTT",
@@ -40,6 +45,11 @@
           "username": "Nom d'utilisateur Zendure",
           "password": "Mot de passe Zendure",
           "p1meter": "Capteur P1 pour le couplage intelligent",
+          "pv_dcpower": "PV primaire : capteur puissance DC totale (surplus solaire)",
+          "pv_load": "PV primaire : capteur puissance de charge (surplus solaire)",
+          "pv_meter": "PV primaire : capteur puissance réseau (optionnel)",
+          "pv_battery": "PV primaire : capteur puissance batterie (optionnel)",
+          "pv_soc": "PV primaire : capteur état de charge batterie (optionnel)",
           "mqttlog": "Journaliser la communication MQTT",
           "mqttlocal": "Utiliser MQTT local",
           "auto_mqtt_user": "Gérer automatiquement les utilisateurs MQTT",
@@ -55,6 +65,11 @@
         "data": {
           "scan_interval": "Intervalle d'analyse (secondes)",
           "p1meter": "Capteur P1 pour le couplage intelligent",
+          "pv_dcpower": "PV primaire : capteur puissance DC totale (surplus solaire)",
+          "pv_load": "PV primaire : capteur puissance de charge (surplus solaire)",
+          "pv_meter": "PV primaire : capteur puissance réseau (optionnel)",
+          "pv_battery": "PV primaire : capteur puissance batterie (optionnel)",
+          "pv_soc": "PV primaire : capteur état de charge batterie (optionnel)",
           "mqttlog": "Journaliser communication MQTT",
           "auto_mqtt_user": "Gérer automatiquement les utilisateurs MQTT"
         },
@@ -92,6 +107,9 @@
       },
       "manual_power": {
         "name": "Puissance manuelle"
+      },
+      "surplus_offset": {
+        "name": "Décalage surplus solaire"
       },
       "min_soc": {
         "name": "SOC minimum"
@@ -384,7 +402,8 @@
           "smart": "Couplage intelligent",
           "smart_discharging": "Décharge intelligente",
           "smart_charging": "Charge intelligente",
-          "store_solar": "Stocker le solaire"
+          "store_solar": "Stocker le solaire",
+          "solar_surplus": "Surplus solaire (sans injection)"
         }
       },
       "pass_mode": {

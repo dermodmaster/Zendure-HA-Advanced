@@ -22,6 +22,11 @@ from .const import (
     CONF_MQTTSERVER,
     CONF_MQTTUSER,
     CONF_P1METER,
+    CONF_PV_BATTERY,
+    CONF_PV_DCPOWER,
+    CONF_PV_LOAD,
+    CONF_PV_METER,
+    CONF_PV_SOC,
     CONF_SIM,
     CONF_WIFIPSW,
     CONF_WIFISSID,
@@ -42,6 +47,11 @@ class ZendureConfigFlow(ConfigFlow, domain=DOMAIN):
         {
             vol.Required(CONF_APPTOKEN): str,
             vol.Required(CONF_P1METER, description={"suggested_value": "sensor.power_actual"}): selector.EntitySelector(),
+            vol.Optional(CONF_PV_DCPOWER): selector.EntitySelector(),
+            vol.Optional(CONF_PV_LOAD): selector.EntitySelector(),
+            vol.Optional(CONF_PV_METER): selector.EntitySelector(),
+            vol.Optional(CONF_PV_BATTERY): selector.EntitySelector(),
+            vol.Optional(CONF_PV_SOC): selector.EntitySelector(),
             vol.Required(CONF_MQTTLOG): bool,
             vol.Required(CONF_MQTTLOCAL): bool,
         }
@@ -159,12 +169,18 @@ class ZendureOptionsFlowHandler(OptionsFlow):
             self.hass.config_entries.async_update_entry(self.config_entry, data=data)
             return self.async_create_entry(title="", data=data)
 
+        data = self.config_entry.data
         options_schema = vol.Schema(
             {
-                vol.Required(CONF_P1METER, default=self.config_entry.data[CONF_P1METER]): str,
-                vol.Required(CONF_MQTTLOG, default=self.config_entry.data[CONF_MQTTLOG]): bool,
-                vol.Optional(CONF_AUTO_MQTT_USER, default=self.config_entry.data.get(CONF_AUTO_MQTT_USER, False)): bool,
-                vol.Optional(CONF_SIM, default=self.config_entry.data.get(CONF_SIM, False)): bool,
+                vol.Required(CONF_P1METER, default=data[CONF_P1METER]): str,
+                vol.Optional(CONF_PV_DCPOWER, default=data.get(CONF_PV_DCPOWER, "")): str,
+                vol.Optional(CONF_PV_LOAD, default=data.get(CONF_PV_LOAD, "")): str,
+                vol.Optional(CONF_PV_METER, default=data.get(CONF_PV_METER, "")): str,
+                vol.Optional(CONF_PV_BATTERY, default=data.get(CONF_PV_BATTERY, "")): str,
+                vol.Optional(CONF_PV_SOC, default=data.get(CONF_PV_SOC, "")): str,
+                vol.Required(CONF_MQTTLOG, default=data[CONF_MQTTLOG]): bool,
+                vol.Optional(CONF_AUTO_MQTT_USER, default=data.get(CONF_AUTO_MQTT_USER, False)): bool,
+                vol.Optional(CONF_SIM, default=data.get(CONF_SIM, False)): bool,
             }
         )
 

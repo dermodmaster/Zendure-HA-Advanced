@@ -7,6 +7,11 @@ DOMAIN = "zendure_ha"
 
 CONF_APPTOKEN = "token"
 CONF_P1METER = "p1meter"
+CONF_PV_DCPOWER = "pv_dcpower"  # Total DC Power of the primary PV system
+CONF_PV_LOAD = "pv_load"  # Load Power of the primary PV system
+CONF_PV_METER = "pv_meter"  # Meter active power (grid) of the primary PV system
+CONF_PV_BATTERY = "pv_battery"  # Battery Power of the primary PV system (neg = charging)
+CONF_PV_SOC = "pv_soc"  # State of charge of the primary battery
 CONF_PRICE = "price"
 CONF_MQTTLOG = "mqttlog"
 CONF_MQTTLOCAL = "mqttlocal"
@@ -42,6 +47,7 @@ class ManagerMode(Enum):
     MATCHING_DISCHARGE = 3
     MATCHING_CHARGE = 4
     STORE_SOLAR = 5
+    SOLAR_SURPLUS = 6
 
 
 class ManagerState(Enum):
@@ -71,3 +77,8 @@ class SmartMode:
 
     POWER_START = 50  # Minimum Power (W) for starting a device
     POWER_TOLERANCE = 5  # Device-level power tolerance (W) before updating
+
+    # Solar surplus mode (charging without grid feed-in)
+    SURPLUS_SETTLE = timedelta(seconds=8)  # Wait after a charge step before probing again
+    SURPLUS_DEADBAND = 15  # Minimum surplus margin (W) before adjusting the charge target
+    SURPLUS_SOCFULL = 99  # Primary battery SoC (%) at/above which it counts as full
