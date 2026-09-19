@@ -135,6 +135,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.availableKwh = ZendureSensor(self, "available_kwh", None, "kWh", "energy_storage", None, 1)
         self.totalKwh = ZendureSensor(self, "total_kwh", None, "kWh", "energy_storage", "measurement", 2)
         self.power = ZendureSensor(self, "power", None, "W", "power", "measurement", 0)
+        self.globalSoc = ZendureSensor(self, "global_soc", None, "%", "battery", "measurement", 1)
 
         # load devices
         for dev in data["deviceList"]:
@@ -143,7 +144,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                     continue
                 _LOGGER.info("Adding device: %s %s => %s", deviceId, prodModel, dev)
 
-                init = Api.createdevice.get(prodModel.lower().strip(), None)
+                init = Api.createdevice.get(prodModel.lower().replace(" ", ""), None)
                 if init is None:
                     _LOGGER.info("Device %s is not supported!", prodModel)
                     continue
@@ -218,6 +219,10 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                         fg = FuseGroup(device.name, 2000, -2000)
                     case "group2400":
                         fg = FuseGroup(device.name, 2400, -2400)
+                    case "group4000":
+                        fg = FuseGroup(device.name, 4000, -4000)
+                    case "group5000":
+                        fg = FuseGroup(device.name, 5000, -5000)
                     case "unused":
                         # only switch off, if Manager is used
                         if self.operation != ManagerMode.OFF:
@@ -247,6 +252,8 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                     5: "group2000",
                     6: "group2400",
                     7: "group3600",
+                    8: "group4000",
+                    9: "group5000",
                 }
                 for deviceId, fg in fuseGroups.items():
                     if deviceId != device.deviceId:
@@ -515,11 +522,15 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         availableKwh = 0
         setpoint = p1
         power = 0
+        totalStoredkWh = 0
+        onlinekWh = 0
 
         for d in self.devices:
             if await d.power_get():
                 # get power production
                 d.pwr_produced = min(0, d.batteryOutput.asInt + d.homeInput.asInt - d.batteryInput.asInt - d.homeOutput.asInt)
+                if d.state == DeviceState.SOCFULL and -d.solarInput.asInt < d.pwr_produced:
+                    d.pwr_produced = -d.solarInput.asInt
                 self.produced -= d.pwr_produced
 
                 # only positive pwr_offgrid must be taken into account, negative values count a solarInput
@@ -534,7 +545,12 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                 # SOCEMPTY means, it could not discharge the battery, but it is still possible to feed into the home using solarpower or offGrid
                 elif (home := d.homeOutput.asInt) > 0:
                     self.discharge.append(d)
-                    self.discharge_bypass -= d.pwr_produced if d.state == DeviceState.SOCFULL and d.exports_bypass else 0
+                    # Cap the bypass at the homeOutput actually added to the setpoint for this
+                    # device: pwr_produced can exceed homeOutput (internal trickle charge, sensor
+                    # skew), and subtracting more than was added fabricates a phantom negative
+                    # setpoint — the root cause of #1151.
+                    if d.state == DeviceState.SOCFULL and d.exports_bypass:
+                        self.discharge_bypass += min(-d.pwr_produced, home)
                     self.discharge_limit += d.fuseGrp.discharge_limit(d)
                     self.discharge_optimal += d.discharge_optimal
                     self.discharge_produced -= d.pwr_produced
@@ -548,18 +564,21 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
 
                 availableKwh += d.actualKwh
                 power += d.pwr_offgrid + home + d.pwr_produced
+                totalStoredkWh += d.electricLevel.asNumber / 100 * d.kWh
+                onlinekWh += d.kWh
 
         # Update the power entities
         self.power.update_value(power)
         self.availableKwh.update_value(availableKwh)
+        self.globalSoc.update_value((totalStoredkWh / onlinekWh * 100) if onlinekWh > 0 else 0)
 
-        # discharge_bypass accumulates the solar-only power produced by SOCFULL devices.
-        # Subtract it from setpoint to avoid over-discharging from grid, but clamp so
-        # setpoint never goes below 0 when p1 >= 0: a SOCFULL device producing solar
-        # should still cover home demand, not trigger charge mode (fixes #1151 output
-        # cycling to 0W with bypass forbidden + 100% SoC).
-        if self.discharge_bypass > 0:
-            setpoint = max(0 if p1 >= 0 else setpoint - self.discharge_bypass, setpoint - self.discharge_bypass)
+        # Bypass production of SOCFULL devices is non-dispatchable: it keeps flowing
+        # to the home regardless of the distribution (power_charge skips devices with
+        # byPass > 0). Remove it from the dispatchable setpoint. Because the per-device
+        # bypass is capped at its homeOutput contribution, this subtraction can never
+        # push the setpoint below "p1 - real charge credits": with no device charging
+        # and p1 >= 0, the result stays >= 0 — the #1151 guarantee holds structurally.
+        setpoint -= self.discharge_bypass
 
         # Update power distribution.
         _LOGGER.info("P1 ======> p1:%s isFast:%s, setpoint:%sW stored:%sW", p1, isFast, setpoint, self.produced)
@@ -571,17 +590,14 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                     await self.power_discharge(setpoint)
 
             case ManagerMode.MATCHING_DISCHARGE:
-                # Only discharge, do nothing if setpoint is negative
-                await self.power_discharge(max(0, setpoint))
+                # Discharge to cover demand and always pass through available solar; never charge
+                await self.power_discharge(max(self.produced, setpoint))
 
             case ManagerMode.MATCHING_CHARGE | ManagerMode.STORE_SOLAR:
                 # Allow discharge of produced power in MATCHING_CHARGE-Mode, otherwise only charge
                 # d.pwr_produced is negative, but self.produced is positive
                 if setpoint > 0 and self.produced > SmartMode.POWER_START and self.operation == ManagerMode.MATCHING_CHARGE:
                     await self.power_discharge(min(self.produced, setpoint))
-                # send device into idle-mode
-                elif setpoint > 0:
-                    await self.power_discharge(0)
                 else:
                     await self.power_charge(min(0, setpoint), time)
 

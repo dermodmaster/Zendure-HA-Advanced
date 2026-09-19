@@ -37,7 +37,7 @@ from .sensor import ZendureRestoreSensor, ZendureSensor
 _LOGGER = logging.getLogger(__name__)
 
 CONST_HEADER = {"content-type": "application/json; charset=UTF-8"}
-CONST_TIMEOUT = ClientTimeout(total=4)
+CONST_TIMEOUT = ClientTimeout(total=2)
 SF_COMMAND_CHAR = "0000c304-0000-1000-8000-00805f9b34fb"
 
 
@@ -45,7 +45,7 @@ class ZendureBattery(EntityDevice):
     """Zendure Battery class for devices."""
 
     @staticmethod
-    def get_battery_type(sn: str) -> tuple[str, str, float]:
+    def get_battery_type(sn: str, pack_type: int | None = None) -> tuple[str, str, float]:
         model = "???"
         match sn[0]:
             case "A":
@@ -56,8 +56,14 @@ class ZendureBattery(EntityDevice):
                     model = "AB1000"
                     kWh = 0.96
             case "B":
-                model = "AB1000S"
-                kWh = 0.96
+                # packType 70 is the SF4000 Mix AC+'s internal 8 kWh pack, which shares
+                # its serial prefix with the unrelated 0.96 kWh AB1000S.
+                if pack_type == 70:
+                    model = "I8000"
+                    kWh = 8.0
+                else:
+                    model = "AB1000S"
+                    kWh = 0.96
             case "C":
                 # External AB2000X and internal AB2000X of SF800+/SF800Pro/SF1600AC+ starting with CO4A. They are also described as additional battery in the Zendure App, even when they are integrated into the device.
                 model = "AB2000" + ("S" if sn[3] == "F" else "X" if sn[3] == "E" else "")
@@ -80,11 +86,25 @@ class ZendureBattery(EntityDevice):
         name = f"{model} {sn[-5:]}".strip()
         return name, model, kWh
 
-    def __init__(self, hass: HomeAssistant, sn: str, parent: EntityDevice) -> None:
+    def __init__(self, hass: HomeAssistant, sn: str, parent: EntityDevice, pack_type: int | None = None) -> None:
         """Initialize Device."""
-        name, model, self.kWh = ZendureBattery.get_battery_type(sn)
+        name, model, self.kWh = ZendureBattery.get_battery_type(sn, pack_type)
         super().__init__(hass, sn, name, model, "", sn, parent.sn)
         self.attr_device_info["serial_number"] = sn
+        self.deltaVoltage = ZendureSensor(self, "deltaVoltage", None, "V", "voltage", "measurement", 3)
+
+    def entityUpdate(self, key: Any, value: Any) -> bool:
+        """Update entity state and recalculate deltaVoltage when maxVol or minVol changes."""
+        changed = super().entityUpdate(key, value)
+        if changed and key in {"maxVol", "minVol"}:
+            max_vol = self.entities.get("maxVol")
+            min_vol = self.entities.get("minVol")
+            if max_vol is not None and min_vol is not None:
+                max_val = max_vol.asNumber
+                min_val = min_vol.asNumber
+                if max_val != 0 and min_val != 0:
+                    self.deltaVoltage.update_value(round(max_val - min_val, 3))
+        return changed
 
 
 class ZendureDevice(EntityDevice):
@@ -139,7 +159,18 @@ class ZendureDevice(EntityDevice):
         self.socLimit = ZendureSensor(self, "socLimit", state=0)
         self.byPass = ZendureSensor(self, "pass", state=0)
 
-        fuseGroups = {0: "unused", 1: "owncircuit", 2: "group800", 3: "group800_2400", 4: "group1200", 5: "group2000", 6: "group2400", 7: "group3600"}
+        fuseGroups = {
+            0: "unused",
+            1: "owncircuit",
+            2: "group800",
+            3: "group800_2400",
+            4: "group1200",
+            5: "group2000",
+            6: "group2400",
+            7: "group3600",
+            8: "group4000",
+            9: "group5000",
+        }
         self.fuseGroup = ZendureRestoreSelect(self, "fuseGroup", fuseGroups, None)
         self.acMode = ZendureSelect(self, "acMode", {1: "input", 2: "output"}, self.entityWrite, 1)
         self.electricLevel = ZendureSensor(self, "electricLevel", None, "%", "battery", "measurement")
@@ -163,6 +194,8 @@ class ZendureDevice(EntityDevice):
 
         self.aggrCharge = ZendureRestoreSensor(self, "aggrCharge", None, "kWh", "energy", "total_increasing", 2)
         self.aggrDischarge = ZendureRestoreSensor(self, "aggrDischarge", None, "kWh", "energy", "total_increasing", 2)
+        # Round-trip efficiency: ratio of total energy discharged to total energy charged, expressed as a percentage
+        self.roundtripEfficiency = ZendureSensor(self, "roundtripEfficiency", None, "%", None, "measurement", 1)
         self.aggrHomeInput = ZendureRestoreSensor(self, "aggrGridInputPower", None, "kWh", "energy", "total_increasing", 2)
         self.aggrHomeOut = ZendureRestoreSensor(self, "aggrOutputHome", None, "kWh", "energy", "total_increasing", 2)
         self.aggrSolar = ZendureRestoreSensor(self, "aggrSolar", None, "kWh", "energy", "total_increasing", 2)
@@ -222,10 +255,12 @@ class ZendureDevice(EntityDevice):
                             self.aggrCharge.aggregate(dt_util.now(), value)
                         self.aggrDischarge.aggregate(dt_util.now(), 0)
                         self.batInOut.update_value(self.batteryOutput.asInt - self.batteryInput.asInt)
+                        self.roundtripEfficiency.update_value(round(self.aggrDischarge.asNumber / charge * 100, 1) if (charge := self.aggrCharge.asNumber) > 0 else 0)
                     case "packInputPower":
                         self.aggrCharge.aggregate(dt_util.now(), 0)
                         self.aggrDischarge.aggregate(dt_util.now(), value)
                         self.batInOut.update_value(self.batteryOutput.asInt - self.batteryInput.asInt)
+                        self.roundtripEfficiency.update_value(round(self.aggrDischarge.asNumber / charge * 100, 1) if (charge := self.aggrCharge.asNumber) > 0 else 0)
                     case "solarInputPower":
                         self.aggrSolar.aggregate(dt_util.now(), value)
                     case "gridInputPower":
@@ -247,7 +282,7 @@ class ZendureDevice(EntityDevice):
                             self.nextCalibration.update_value(dt_util.now() + timedelta(days=30))
                         self.availableKwh.update_value((self.electricLevel.asNumber - self.minSoc.asNumber) / 100 * self.kWh)
                     case "gridReverse":
-                        self.exports_bypass = value != 2
+                        self.exports_bypass = value == 1
         except Exception as e:
             _LOGGER.error("EntityUpdate error %s %s %s!", self.name, key, e)
             _LOGGER.error(traceback.format_exc())
@@ -327,7 +362,7 @@ class ZendureDevice(EntityDevice):
                     continue
 
                 if (bat := self.batteries.get(sn, None)) is None:
-                    bat = ZendureBattery(self.hass, sn, self)
+                    bat = ZendureBattery(self.hass, sn, self, b.get("packType"))
                     self.batteries[sn] = bat
 
                 # Always apply properties — including for newly created batteries.
@@ -734,9 +769,9 @@ class ZendureZenSdk(ZendureDevice):
             await self.httpPost("properties/write", {"properties": {entity.propertyName: value}})
 
     async def dataRefresh(self, update_count: int) -> None:
-        if update_count == 0 and not self.online:
-            json = await self.httpGet("properties/report")
-            await self.mqttProperties(json)
+        if (update_count == 0 and not self.online) or self.connection.value == SmartMode.ZENSDK:
+            if json := await self.httpGet("properties/report"):
+                await self.mqttProperties(json)
 
     async def power_get(self) -> bool:
         """Get the current power."""
@@ -749,8 +784,9 @@ class ZendureZenSdk(ZendureDevice):
     async def charge(self, power: int, _off: bool = False) -> int:
         """Set charge power."""
         _LOGGER.info("Power charge %s => %s", self.name, power)
-        if power == -SmartMode.POWER_START and self.limitInput.asInt <= -SmartMode.POWER_START and self.homeInput.asInt == 0:
-            power = max(self.limitInput.asInt - 4, -2 * SmartMode.POWER_START)
+        if power == -SmartMode.POWER_START and self.limitInput.asInt >= SmartMode.POWER_START and self.homeInput.asInt == 0:
+            power = -min(self.limitInput.asInt + 4, 2 * SmartMode.POWER_START)
+            _LOGGER.info("Power charge kickstart %s => %s", self.name, power)
         await self.doCommand({"properties": {"smartMode": 0 if power == 0 and self.pwr_offgrid == 0 else 1, "acMode": 1, "outputLimit": 0, "inputLimit": -power}})
         return power
 
@@ -758,6 +794,7 @@ class ZendureZenSdk(ZendureDevice):
         _LOGGER.info("Power discharge %s => %s", self.name, power)
         if power == SmartMode.POWER_START and self.limitOutput.asInt >= SmartMode.POWER_START and self.homeOutput.asInt == 0:
             power = min(self.limitOutput.asInt + 4, 2 * SmartMode.POWER_START)
+            _LOGGER.info("Power discharge kickstart %s => %s", self.name, power)
         await self.doCommand({"properties": {"smartMode": 0 if power == 0 and self.pwr_offgrid == 0 else 1, "acMode": 2, "outputLimit": power, "inputLimit": 0}})
         return power
 

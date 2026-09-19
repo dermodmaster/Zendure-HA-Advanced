@@ -5,7 +5,11 @@
       "reconfigure_successful": "Reconfiguration successful"
     },
     "error": {
-      "cannot_connect": "Failed to connect",
+      "cannot_connect": "Could not reach the Zendure API. Check your internet connection and try again.",
+      "malformed_token": "The token is not valid. Copy the Home Assistant token again from the Zendure app (Settings, Developer).",
+      "api_rejected": "Zendure rejected the request: {detail}",
+      "no_devices": "Token accepted, but no devices were found on this account. Make sure you use the Zendure account the device is registered to, and the correct region.",
+      "no_mqtt": "Token accepted, but no MQTT server was returned. Enable local or cloud MQTT for this account in the Zendure app.",
       "invalid_auth": "Invalid authentication",
       "unknown": "Unexpected error"
     },
@@ -274,6 +278,12 @@
       "soc_level": {
         "name": "Electricity Level (SoC)"
       },
+      "global_soc": {
+        "name": "Global Battery SOC"
+      },
+      "roundtrip_efficiency": {
+        "name": "Roundtrip Efficiency"
+      },
       "max_temp": {
         "name": "Highest Cell Temperature"
       },
@@ -376,6 +386,9 @@
           "6": "BossWerk",
           "7": "TSun"
         }
+      },
+      "delta_voltage": {
+        "name": "Delta Voltage"
       }
     },
     "select": {
@@ -391,6 +404,13 @@
         "state": {
           "on": "On/Output",
           "off": "Off/Input"
+        }
+      },
+      "hub_mode": {
+        "name": "Hub Mode",
+        "state": {
+          "paired": "Paired with Hub",
+          "standalone": "Standalone"
         }
       },
       "hems_state": {
@@ -411,13 +431,15 @@
         "name": "Device Fuse Group",
         "state": {
           "unused": "Unused, device has No FuseGroup",
-          "owncircuit": "Device has its own circuit or phase",
+          "owncircuit": "Device has its own circuit or phase, max. 3600w",
           "group800": "FuseGroup max. 800w / 1200w charge",
           "group800_2400": "FuseGroup max. 800w / 2400w charge",
           "group1200": "FuseGroup max. 1200w",
           "group2000": "FuseGroup max. 2000w",
           "group2400": "FuseGroup max. 2400w",
-          "group3600": "FuseGroup max. 3600w"
+          "group3600": "FuseGroup max. 3600w",
+          "group4000": "FuseGroup max. 4000w",
+          "group5000": "FuseGroup max. 5000w"
         }
       },
       "connection": {
