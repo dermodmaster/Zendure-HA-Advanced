@@ -85,6 +85,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.pv_soc: float | None = None
         self.surplus_charge = 0
         self.surplus_next = datetime.min
+        self.surplus_next_down = datetime.min
         self.surplus_dirty = False
 
         self.charge: list[ZendureDevice] = []
@@ -283,6 +284,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         # reset the solar surplus probing state on every mode change
         self.surplus_charge = 0
         self.surplus_next = datetime.min
+        self.surplus_next_down = datetime.min
         self.surplus_dirty = operation == ManagerMode.SOLAR_SURPLUS
 
         if self.p1meterEvent is not None:
@@ -737,29 +739,49 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             await self.power_discharge(max(0, p1))
             return
 
-        # advance the probing step only on a fresh reading after the settle time
-        if self.surplus_dirty and time > self.surplus_next:
+        # advance the probing step only on a fresh reading; backing off is allowed sooner than probing upwards
+        if self.surplus_dirty and time > self.surplus_next_down:
             margin = int(self.pv_dcpower - self.pv_load)
 
-            # the offset is only reserved while the primary battery can still charge;
-            # when it is full there is nothing to reserve and we probe the full margin
+            # The offset caps what is reserved for the primary battery, and only while it can still charge.
+            # Reserve what it actually absorbs (extra house load reduces feed-in before battery charging),
+            # so surplus it cannot take is used; when it is full nothing is reserved.
             primary_full = (self.pv_soc is not None and self.pv_soc >= SmartMode.SURPLUS_SOCFULL) or (
                 self.pv_soc is None and self.pv_battery is not None and abs(self.pv_battery) < SmartMode.SURPLUS_DEADBAND and margin > 0
             )
-            eff_offset = 0 if primary_full else int(self.surplus_offset.asNumber)
+            offset = int(self.surplus_offset.asNumber)
+            if primary_full:
+                eff_offset = 0
+            elif self.pv_battery is not None:
+                eff_offset = min(max(0, int(-self.pv_battery)), offset)
+            else:
+                eff_offset = offset
             step = margin - eff_offset
 
             # safety: real grid import despite charging means we took too much -> back off
             if self.pv_meter is not None and self.pv_meter > SmartMode.SURPLUS_DEADBAND:
                 step -= int(self.pv_meter)
 
-            if abs(step) >= SmartMode.SURPLUS_DEADBAND:
-                max_charge = -sum(d.charge_limit for d in self.devices)
-                self.surplus_charge = max(0, min(self.surplus_charge + step, max_charge))
-                _LOGGER.info("Surplus => margin:%sW offset:%sW step:%sW target:%sW", margin, eff_offset, step, self.surplus_charge)
+            # probing upwards must wait for the full settle time, otherwise keep the fresh reading for the next run
+            if step > 0 and time <= self.surplus_next:
+                pass
+            else:
+                if abs(step) >= SmartMode.SURPLUS_DEADBAND:
+                    max_charge = -sum(d.charge_limit for d in self.devices)
+                    self.surplus_charge = max(0, min(self.surplus_charge + step, max_charge))
+                    _LOGGER.info(
+                        "Surplus => margin:%sW reserve:%sW step:%sW target:%sW battery:%s meter:%s",
+                        margin,
+                        eff_offset,
+                        step,
+                        self.surplus_charge,
+                        self.pv_battery,
+                        self.pv_meter,
+                    )
 
-            self.surplus_dirty = False
-            self.surplus_next = time + SmartMode.SURPLUS_SETTLE
+                self.surplus_dirty = False
+                self.surplus_next = time + SmartMode.SURPLUS_SETTLE
+                self.surplus_next_down = time + SmartMode.SURPLUS_SETTLE_DOWN
 
         if self.surplus_charge > 0:
             await self.power_charge(-self.surplus_charge, time)
