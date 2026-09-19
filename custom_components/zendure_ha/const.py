@@ -79,6 +79,7 @@ class SmartMode:
     POWER_TOLERANCE = 5  # Device-level power tolerance (W) before updating
 
     # Solar surplus mode (charging without grid feed-in)
-    SURPLUS_SETTLE = timedelta(seconds=8)  # Wait after a charge step before probing again
+    SURPLUS_SETTLE = timedelta(seconds=8)  # Wait after a charge step before probing upwards again
+    SURPLUS_SETTLE_DOWN = timedelta(seconds=3)  # Shorter wait before backing off, to stop drawing from the primary battery/grid
     SURPLUS_DEADBAND = 15  # Minimum surplus margin (W) before adjusting the charge target
     SURPLUS_SOCFULL = 99  # Primary battery SoC (%) at/above which it counts as full
