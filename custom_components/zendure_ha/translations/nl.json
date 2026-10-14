@@ -5,7 +5,11 @@
       "reconfigure_successful": "Hergroepering geslaagd"
     },
     "error": {
-      "cannot_connect": "Verbinding mislukt",
+      "cannot_connect": "De Zendure-API is niet bereikbaar. Controleer je internetverbinding en probeer het opnieuw.",
+      "malformed_token": "Het token is ongeldig. Kopieer het Home Assistant-token opnieuw uit de Zendure-app (Instellingen, Ontwikkelaar).",
+      "api_rejected": "Zendure heeft het verzoek geweigerd: {detail}",
+      "no_devices": "Token geaccepteerd, maar er zijn geen apparaten gevonden op dit account. Zorg dat je het Zendure-account gebruikt waarop het apparaat is geregistreerd, en de juiste regio.",
+      "no_mqtt": "Token geaccepteerd, maar er is geen MQTT-server teruggegeven. Schakel lokale of cloud-MQTT in voor dit account in de Zendure-app.",
       "invalid_auth": "Ongeldige authenticatie",
       "unknown": "Onverwachte fout"
     },
@@ -231,6 +235,12 @@
       "soc_level": {
         "name": "Elektriciteitsniveau (SoC)"
       },
+      "global_soc": {
+         "name": "Globale batterij SOC"
+      },
+      "roundtrip_efficiency": {
+        "name": "Retourrendement"
+      },
       "max_temp": {
         "name": "Hoogste celtemperatuur"
       },
@@ -284,6 +294,9 @@
       },
       "masterhaer_version": {
         "name": "Hardwareversie"
+      },
+      "delta_voltage": {
+        "name": "Spanningsverschil"
       }
     },
     "select": {
@@ -299,6 +312,13 @@
         "state": {
           "on": "Aan/Uitgang",
           "off": "Uit/Invoer"
+        }
+      },
+      "hub_mode": {
+        "name": "Hub-modus",
+        "state": {
+          "paired": "Gekoppeld met hub",
+          "standalone": "Standalone"
         }
       },
       "hems_state": {
@@ -319,13 +339,15 @@
         "name": "Device fusegroup",
         "state": {
           "unused": "Niet gebruikt, apparaat heeft geen zekeringgroep",
-          "owncircuit": "Apparaat is aangesloten op aparte groep of fase",
+          "owncircuit": "Apparaat is aangesloten op aparte groep of fase, max. 3600w",
           "group800": "Zekeringgroep max. 800w / 1200w batterijlading",
           "group800_2400": "Zekeringgroep max. 800w / 2400w batterijlading",
           "group1200": "Zekeringgroep max. 1200w",
           "group2000": "Zekeringgroep max. 2000w",
           "group2400": "Zekeringgroep max. 2400w",
-          "group3600": "Zekeringgroep max. 3600w"
+          "group3600": "Zekeringgroep max. 3600w",
+          "group4000": "Zekeringgroep max. 4000w",
+          "group5000": "Zekeringgroep max. 5000w"
         }
       },
       "connection": {

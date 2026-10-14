@@ -9,6 +9,7 @@ from homeassistant.helpers import device_registry as dr
 from .api import Api
 from .const import CONF_MQTTLOG, CONF_P1METER, CONF_SIM
 from .device import ZendureDevice
+from .entity import EntityDevice
 from .manager import ZendureConfigEntry, ZendureManager
 from .migration import Migration
 
@@ -19,16 +20,17 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ZendureConfigEntry) -> bool:
     """Migrate config entry to new version."""
-    if entry.version == 1 and entry.minor_version < 5:
+    if entry.version == 1 and entry.minor_version < 8:
         _LOGGER.info("Migrating Zendure config entry from version %s.%s", entry.version, entry.minor_version)
         await Migration.async_migrate(hass, entry.entry_id)
-    hass.config_entries.async_update_entry(entry, version=1, minor_version=5)
+    hass.config_entries.async_update_entry(entry, version=1, minor_version=8)
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ZendureConfigEntry) -> bool:
     """Set up Zendure as config entry."""
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await EntityDevice.async_load_translations(hass)
     manager = ZendureManager(hass, entry)
     await manager.loadDevices()
     entry.runtime_data = manager
