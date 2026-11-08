@@ -108,3 +108,34 @@ async def test_power_charge_first_call_primes_hysteria_and_forces_zero_setpoint(
     assert manager.charge_time == now + timedelta(seconds=2)
     assert manager.pwr_low == 0
     assert manager.operationstate.values == [ManagerState.IDLE.value]
+
+
+async def _discharge_cycles(setpoint: int, cycles: int) -> tuple[_FakeDevice, _FakeDevice]:
+    """Two SF 2400 AC+ discharging; the lower one (63 %) is the stop candidate."""
+    manager = _make_manager_harness()
+    low = _FakeDevice(pwr_max=2400, electric_level=63)
+    high = _FakeDevice(pwr_max=2400, electric_level=70)
+    for d in (low, high):
+        d.discharge_start = 240
+        d.discharge_optimal = 600
+    for _ in range(cycles):
+        manager.discharge = [low, high]
+        manager.discharge_limit = 4800
+        manager.discharge_optimal = 1200
+        manager.discharge_weight = sum(d.pwr_max * d.electricLevel.asInt for d in (low, high))
+        await manager.power_discharge(setpoint)
+    return low, high
+
+
+async def test_power_discharge_stops_second_device_below_two_optimal_ranges() -> None:
+    # 760 W shared by two 2400 W inverters (~380 W each) is inefficient -> one device takes all
+    low, high = await _discharge_cycles(760, cycles=10)
+    assert low.discharge_calls[-1] == 0
+    assert high.discharge_calls[-1] == 760
+
+
+async def test_power_discharge_keeps_both_devices_inside_hysteresis() -> None:
+    # 1100 W: below the 1200 W start threshold, but above the stop threshold -> no flapping
+    low, high = await _discharge_cycles(1100, cycles=30)
+    assert low.discharge_calls[-1] > 0
+    assert high.discharge_calls[-1] > 0
