@@ -76,6 +76,7 @@ class SmartMode:
     HEMSOFF_TIMEOUT = 60  # Seconds before HEMS state is set to OFF if no updates are received
 
     POWER_START = 50  # Minimum Power (W) for starting a device
+    DISCHARGE_STOP = 0.8  # Stop the lowest of several discharging devices below this share of its optimal power
     POWER_TOLERANCE = 5  # Device-level power tolerance (W) before updating
 
     # Solar surplus mode (charging without grid feed-in)
