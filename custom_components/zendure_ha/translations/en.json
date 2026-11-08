@@ -129,7 +129,7 @@
         "name": "Manual Power"
       },
       "surplus_offset": {
-        "name": "Solar Surplus Offset"
+        "name": "Solar Surplus Feed-in Reserve"
       },
       "surplus_probe": {
         "name": "Solar Surplus Probing Step"
@@ -158,7 +158,7 @@
         "name": "Solar Surplus Margin"
       },
       "surplus_eff_offset": {
-        "name": "Solar Surplus Effective Offset"
+        "name": "Solar Surplus Effective Feed-in Reserve"
       },
       "pv_dcpower": {
         "name": "Primary PV Total DC Power"
