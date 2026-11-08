@@ -127,7 +127,9 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
 
         self.operationstate = ZendureSensor(self, "operation_state")
         self.manualpower = ZendureRestoreNumber(self, "manual_power", None, None, "W", "power", 12000, -12000, NumberMode.BOX, True)
+        # feed-in reserve for the solar surplus mode while the primary battery is not full; seed a default on first start
         self.surplus_offset = ZendureRestoreNumber(self, "surplus_offset", None, None, "W", "power", 2000, 0, NumberMode.BOX, True)
+        self.surplus_offset._attr_native_value = 50  # noqa: SLF001
         # probing step for the solar surplus mode (0 = disabled); seed a sensible default on first start
         self.surplus_probe = ZendureRestoreNumber(self, "surplus_probe", None, None, "W", "power", 2000, 0, NumberMode.BOX, True)
         self.surplus_probe._attr_native_value = 100  # noqa: SLF001
@@ -656,6 +658,11 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                     await self.power_discharge(setpoint)
 
             case ManagerMode.MATCHING_DISCHARGE:
+                # The primary battery regulates the same meter to zero. Count its discharge as demand and
+                # its charging as excess, so the Zendure covers the load first and never charges it.
+                # Half steps: its readings lag behind the Zendure output.
+                if self.pv_battery is not None:
+                    setpoint += int(self.pv_battery / 2)
                 # Discharge to cover demand and always pass through available solar; never charge
                 await self.power_discharge(max(self.produced, setpoint))
 
@@ -810,7 +817,9 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             self.pwr_low: int = 0
 
     async def power_surplus(self, p1: int, time: datetime) -> None:
-        """Charge from PV surplus of the primary system when feed-in is not possible."""
+        """Charge from PV surplus of the primary system; its DC-coupled battery has priority."""
+        # While the primary battery is not full, the Zendure only takes the grid feed-in above a small
+        # reserve (surplus_offset) and gives power back as soon as the feed-in disappears.
         # A curtailing inverter (primary battery full, no/limited feed-in) throttles its
         # production down to the load, so TotalDC - Load is ~0 and hides the available surplus.
         # Therefore, while the primary battery is full and not being loaded, the charge target is
@@ -827,19 +836,16 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         if self.surplus_dirty and time > self.surplus_next_down:
             margin = int(self.pv_dcpower - self.pv_load)
 
-            # The offset caps what is reserved for the primary battery, and only while it can still charge.
-            # Reserve what it actually absorbs (extra house load reduces feed-in before battery charging),
-            # so surplus it cannot take is used; when it is full nothing is reserved.
+            # The primary battery is DC-coupled and charges before the inverter feeds anything into the
+            # grid, so it has priority. While it is not full, only feed-in above the reserve is surplus it
+            # cannot take; the reserve keeps a small feed-in as feedback that it is still charging at its limit.
+            # When it is full nothing is reserved.
             primary_full = (self.pv_soc is not None and self.pv_soc >= SmartMode.SURPLUS_SOCFULL) or (
                 self.pv_soc is None and self.pv_battery is not None and abs(self.pv_battery) < SmartMode.SURPLUS_DEADBAND and margin > 0
             )
-            offset = int(self.surplus_offset.asNumber)
-            if primary_full:
-                eff_offset = 0
-            elif self.pv_battery is not None:
-                eff_offset = min(max(0, int(-self.pv_battery)), offset)
-            else:
-                eff_offset = offset
+            eff_offset = 0 if primary_full else int(self.surplus_offset.asNumber)
+            # grid meter: positive = import, negative = feed-in
+            feed_in = max(0, -p1)
 
             # feedback that we took too much: the primary battery being loaded (preferred; neg = charging,
             # so a positive value means it is discharging to supply load) or, as a fallback, real grid import.
@@ -856,9 +862,16 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             elif primary_full:
                 # primary battery full and not loaded -> probe upward to harvest the curtailed surplus
                 step = max(margin - eff_offset, int(self.surplus_probe.asNumber))
+            elif feed_in >= eff_offset + SmartMode.SURPLUS_DEADBAND:
+                # primary battery charges at its limit and the rest is fed in -> take the feed-in above the reserve
+                step = feed_in - eff_offset
+            elif feed_in > 0:
+                # feed-in inside the band: hold; below the reserve: give back proportionally
+                step = min(0, feed_in - eff_offset)
             else:
-                # primary battery not full yet -> only take what exceeds the reserved offset
-                step = margin - eff_offset
+                # no feed-in at all: the Zendure may be drawing from the primary battery -> give power back.
+                # DC - Load is not used here, it contains the inverter losses and would ramp the Zendure up.
+                step = -eff_offset - int(self.surplus_probe.asNumber)
 
             self.surplusMargin.update_value(margin)
             self.surplusEffOffset.update_value(eff_offset)

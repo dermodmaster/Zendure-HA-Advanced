@@ -118,7 +118,7 @@
         "name": "Manuelle Leistung"
       },
       "surplus_offset": {
-        "name": "Solar-Überschuss Offset"
+        "name": "Solar-Überschuss Einspeise-Reserve"
       },
       "surplus_probe": {
         "name": "Solar-Überschuss Probing-Schritt"
@@ -147,7 +147,7 @@
         "name": "Solar-Überschuss Marge"
       },
       "surplus_eff_offset": {
-        "name": "Effektiver Solar-Überschuss Offset"
+        "name": "Effektive Einspeise-Reserve"
       },
       "pv_dcpower": {
         "name": "Primär-PV Gesamt-DC-Leistung"
