@@ -86,4 +86,12 @@ class SmartMode:
     SURPLUS_DEADBAND = 15  # Minimum surplus margin (W) before adjusting the charge target
     SURPLUS_SOCFULL_MARGIN = 1  # Primary battery counts as full at its maximum SoC minus this margin (%)
     SURPLUS_START_HYSTERESIS = 2  # Charging stops this far (%) below the start SoC of the primary battery
+
+    # Charge limit of the primary battery, set by the manager in its inverter (e.g. 80 %)
+    PRIMARY_SATURATED_FEEDIN = 200  # Feed-in (W) while the Zendure charges at its maximum = it cannot take all surplus
+    PRIMARY_SATURATED_TIME = timedelta(minutes=2)  # ... for this long -> lift the limit for the rest of the day
+    PRIMARY_NIGHT_PV = 50  # Primary PV power (W) below which it is night: re-arm the limit for the next day
+    PRIMARY_FULL_CHARGE_WEEKDAY = 5  # Saturday: charge the primary battery to 100 % (BMS calibration, cell balancing)
+    PRIMARY_FULL_SOC = 99  # Primary SoC (%) that counts as the weekly full charge being done
+    PRIMARY_WRITE_INTERVAL = timedelta(minutes=1)  # Minimum time between two writes to the inverter
     SURPLUS_HOLD = timedelta(minutes=2)  # After charging, stay in charge mode this long before covering grid import

@@ -51,6 +51,8 @@ def _harness(
     manager.pv_max_soc = max_soc
     manager.surplus_start_soc = SimpleNamespace(asNumber=start_soc)
     manager.surplus_released = False
+    manager.surplus_saturated_since = None
+    manager.primary_limit_lifted = False
     manager.surplus_charge = charge
     manager.surplus_dirty = True
     manager.surplus_next = datetime.min
@@ -279,3 +281,25 @@ async def test_start_soc_above_max_soc_still_starts_when_full() -> None:
     manager = _harness(charge=0, dcpower=3000, load=3000, battery=0, soc=89.5, max_soc=90, start_soc=95)
     await _run(manager, p1=0)
     assert manager.surplus_charge == 100
+
+
+async def test_limit_is_lifted_when_the_zendure_cannot_take_all_surplus() -> None:
+    # primary battery at its 80 % limit, Zendure at its 4800 W maximum and still 500 W fed in for 2 minutes
+    manager = _harness(charge=4800, dcpower=9000, load=8500, battery=0, soc=80, max_soc=80)
+    now = datetime.now()
+    await ZendureManager.power_surplus(manager, -500, now)
+    assert manager.primary_limit_lifted is False
+    manager.surplus_dirty = True
+    await ZendureManager.power_surplus(manager, -500, now + timedelta(seconds=130))
+    assert manager.primary_limit_lifted is True
+
+
+async def test_short_saturation_does_not_lift_the_limit() -> None:
+    manager = _harness(charge=4800, dcpower=9000, load=8500, battery=0, soc=80, max_soc=80)
+    now = datetime.now()
+    await ZendureManager.power_surplus(manager, -500, now)
+    manager.surplus_dirty = True
+    await ZendureManager.power_surplus(manager, 0, now + timedelta(seconds=60))
+    manager.surplus_dirty = True
+    await ZendureManager.power_surplus(manager, -500, now + timedelta(seconds=130))
+    assert manager.primary_limit_lifted is False
