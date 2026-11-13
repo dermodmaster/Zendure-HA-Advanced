@@ -59,6 +59,8 @@ def _harness(
     manager.surplusTarget = _RecordingSensor()
     # what the devices really take from the grid (they lag behind the target)
     taken = charge if actual is None else actual
+    # device input when the latest primary/grid readings arrived
+    manager.surplus_seen_input = taken
     manager.devices = [
         SimpleNamespace(charge_limit=-2400, homeInput=SimpleNamespace(asInt=taken // 2)),
         SimpleNamespace(charge_limit=-2400, homeInput=SimpleNamespace(asInt=taken - taken // 2)),
@@ -184,14 +186,43 @@ async def test_back_off_starts_from_what_the_devices_take() -> None:
     assert manager.surplus_charge == 2500
 
 
-async def test_back_off_waits_until_the_devices_followed() -> None:
-    # observed 2026-11-13 12:37:55-12:38:04: three cuts within 9 s took the target from 4800 to 0,
-    # although 1.1-2.2 kW too much were taken
+async def test_repeated_readings_of_one_state_do_not_cut_again() -> None:
     manager = _harness(charge=4800, dcpower=8000, load=9200, battery=1143, soc=100, actual=4763)
     now = datetime.now()
     await ZendureManager.power_surplus(manager, 0, now)
     first = manager.surplus_charge
-    manager.pv_battery = 2156
     manager.surplus_dirty = True
-    await ZendureManager.power_surplus(manager, 0, now + timedelta(seconds=3.3))
+    await ZendureManager.power_surplus(manager, 0, now + timedelta(seconds=1))
+    assert first == 4763 - 1143
     assert manager.surplus_charge == first
+
+
+async def test_observed_back_off_sequence_does_not_wind_down_to_zero() -> None:
+    # 2026-11-13 12:37:55-12:38:04: (primary battery discharge, device input when it was measured)
+    manager = _harness(charge=4800, dcpower=8000, load=9200, battery=0, soc=100)
+    now = datetime.now()
+    for i, (battery, seen) in enumerate([(1143, 4763), (2156, 4464), (1533, 4464)]):
+        manager.pv_battery = battery
+        manager.surplus_seen_input = seen
+        manager.surplus_dirty = True
+        await ZendureManager.power_surplus(manager, 0, now + timedelta(seconds=3 * i))
+    assert manager.surplus_charge == 4464 - 2156
+
+
+async def test_back_off_counts_primary_discharge_and_grid_import() -> None:
+    # 2026-11-13 13:03:52: 2.7 kW from the primary battery and 1.8 kW from the grid at the same time
+    manager = _harness(charge=4800, dcpower=2800, load=7000, battery=2699, soc=100, meter=1787, actual=4633)
+    await _run(manager, p1=1787)
+    assert manager.surplus_charge == 4633 - 2699 - 1787
+
+
+async def test_back_off_right_after_an_upward_step() -> None:
+    # 2026-11-13 13:03:45: a +100 W probe step blocked the back-off for 6 s while 2 kW were imported
+    manager = _harness(charge=4553, dcpower=8000, load=6500, battery=0, soc=100, actual=4540)
+    now = datetime.now()
+    await ZendureManager.power_surplus(manager, -500, now)
+    assert manager.surplus_charge > 4553
+    manager.pv_dcpower = 2800
+    manager.surplus_dirty = True
+    await ZendureManager.power_surplus(manager, 1976, now + timedelta(seconds=1))
+    assert manager.surplus_charge == 4540 - 1976

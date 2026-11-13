@@ -91,6 +91,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.surplus_next = datetime.min
         self.surplus_next_down = datetime.min
         self.surplus_last_charge = datetime.min
+        self.surplus_seen_input = 0
         self.surplus_dirty = False
 
         self.charge: list[ZendureDevice] = []
@@ -329,6 +330,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.surplus_next = datetime.min
         self.surplus_next_down = datetime.min
         self.surplus_last_charge = datetime.min
+        self.surplus_seen_input = 0
         self.surplus_dirty = operation == ManagerMode.SOLAR_SURPLUS
 
         # reflect the automation status on the status sensor and master switch
@@ -500,6 +502,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             p1 = int(self.p1_factor * float(new_state.state))
         except ValueError:
             return
+        self.surplus_seen_input = self.devices_input()
 
         # Get time & update simulation
         time = datetime.now()
@@ -537,6 +540,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             setattr(self, attr, value)
         except (ValueError, TypeError):
             return
+        self.surplus_seen_input = self.devices_input()
 
         # mirror the value and keep the live surplus margin up to date (independent of mode)
         if (sensor := self.pv_sensors.get(attr)) is not None:
@@ -819,6 +823,10 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                         break
             self.pwr_low: int = 0
 
+    def devices_input(self) -> int:
+        """Return the power the devices currently take from the home grid."""
+        return sum(d.homeInput.asInt for d in self.devices)
+
     async def power_surplus(self, p1: int, time: datetime) -> None:
         """Charge from PV surplus of the primary system; its DC-coupled battery has priority."""
         # While the primary battery is not full, the Zendure only takes the grid feed-in above a small
@@ -850,21 +858,16 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             # grid meter: positive = import, negative = feed-in
             feed_in = max(0, -p1)
 
-            # feedback that we took too much: the primary battery being loaded (preferred; neg = charging,
-            # so a positive value means it is discharging to supply load) or, as a fallback, real grid import.
-            if self.pv_battery is not None and self.pv_battery > SmartMode.SURPLUS_DEADBAND:
-                overshoot = int(self.pv_battery)
-            elif self.pv_meter is not None and self.pv_meter > SmartMode.SURPLUS_DEADBAND:
-                overshoot = int(self.pv_meter)
-            else:
+            # feedback that we took too much: the primary battery discharging (neg = charging) plus grid import
+            overshoot = max(0, int(self.pv_battery or 0)) + max(0, p1)
+            if overshoot <= SmartMode.SURPLUS_DEADBAND:
                 overshoot = 0
 
             if overshoot > 0:
-                # primary battery is being loaded / grid import -> reduce the charge target, starting from what
-                # the devices really take: they lag behind the target, and cutting the target again on every
-                # reading winds it down to 0
-                actual = sum(d.homeInput.asInt for d in self.devices)
-                step = min(0, actual - self.surplus_charge) - overshoot
+                # primary battery is loaded / grid import -> reduce the target to what the devices took when these
+                # readings were taken, minus the overshoot. The target is absolute, so a second reading of the same
+                # state does not cut again, and the devices lagging behind the target cannot wind it down to 0.
+                step = min(0, self.surplus_seen_input - overshoot - self.surplus_charge)
             elif primary_full:
                 # primary battery full and not loaded -> probe upward to harvest the curtailed surplus
                 step = max(margin - eff_offset, int(self.surplus_probe.asNumber))
