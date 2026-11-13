@@ -90,6 +90,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.surplus_charge = 0
         self.surplus_next = datetime.min
         self.surplus_next_down = datetime.min
+        self.surplus_last_charge = datetime.min
         self.surplus_dirty = False
 
         self.charge: list[ZendureDevice] = []
@@ -327,6 +328,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.surplus_charge = 0
         self.surplus_next = datetime.min
         self.surplus_next_down = datetime.min
+        self.surplus_last_charge = datetime.min
         self.surplus_dirty = operation == ManagerMode.SOLAR_SURPLUS
 
         # reflect the automation status on the status sensor and master switch
@@ -858,8 +860,11 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                 overshoot = 0
 
             if overshoot > 0:
-                # primary battery is being loaded / grid import -> reduce the charge target
-                step = -overshoot
+                # primary battery is being loaded / grid import -> reduce the charge target, starting from what
+                # the devices really take: they lag behind the target, and cutting the target again on every
+                # reading winds it down to 0
+                actual = sum(d.homeInput.asInt for d in self.devices)
+                step = min(0, actual - self.surplus_charge) - overshoot
             elif primary_full:
                 # primary battery full and not loaded -> probe upward to harvest the curtailed surplus
                 step = max(margin - eff_offset, int(self.surplus_probe.asNumber))
@@ -903,8 +908,11 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.surplusTarget.update_value(self.surplus_charge)
 
         if self.surplus_charge > 0:
+            self.surplus_last_charge = time
             await self.power_charge(-self.surplus_charge, time)
-        elif p1 > SmartMode.POWER_START:
+        elif p1 > SmartMode.POWER_START and time > self.surplus_last_charge + SmartMode.SURPLUS_HOLD:
             await self.power_discharge(p1)
         else:
-            await self.power_discharge(0)
+            # Stay in charge mode at 0 W: a cloud dip only lasts seconds, and switching to discharge mode
+            # flips the AC mode and restarts the charge hysteresis (60 s without charging afterwards).
+            await self.power_charge(0, time)
