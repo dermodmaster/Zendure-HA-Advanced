@@ -39,6 +39,8 @@ def _harness(
     probe: int = 100,
     last_charge: datetime = datetime.min,
     actual: int | None = None,
+    max_soc: float | None = None,
+    start_soc: float = 0,
 ) -> ZendureManager:
     manager = object.__new__(ZendureManager)
     manager.pv_dcpower = dcpower
@@ -46,6 +48,9 @@ def _harness(
     manager.pv_meter = meter
     manager.pv_battery = battery
     manager.pv_soc = soc
+    manager.pv_max_soc = max_soc
+    manager.surplus_start_soc = SimpleNamespace(asNumber=start_soc)
+    manager.surplus_released = False
     manager.surplus_charge = charge
     manager.surplus_dirty = True
     manager.surplus_next = datetime.min
@@ -226,3 +231,51 @@ async def test_back_off_right_after_an_upward_step() -> None:
     manager.surplus_dirty = True
     await ZendureManager.power_surplus(manager, 1976, now + timedelta(seconds=1))
     assert manager.surplus_charge == 4540 - 1976
+
+
+async def test_primary_counts_as_full_at_its_configured_max_soc() -> None:
+    # primary battery limited to 90 % in the inverter: at 90 % it is full -> no reserve, probe upward
+    manager = _harness(charge=500, dcpower=3000, load=3000, battery=0, soc=90, max_soc=90)
+    await _run(manager, p1=0)
+    assert manager.surplusPrimaryFull.last == 1
+    assert manager.surplus_charge == 600
+
+
+async def test_primary_at_90_is_not_full_without_max_soc() -> None:
+    manager = _harness(charge=500, dcpower=3000, load=3000, battery=0, soc=90)
+    await _run(manager, p1=0)
+    assert manager.surplusPrimaryFull.last == 0
+
+
+async def test_no_charging_below_the_start_soc() -> None:
+    # primary battery at 40 % charges at its limit and 800 W are fed in, but the start is set to 50 %
+    manager = _harness(charge=0, dcpower=6000, load=2200, battery=-2700, soc=40, start_soc=50)
+    await _run(manager, p1=-800)
+    assert manager.surplus_charge == 0
+    assert manager.charge_calls == [0]
+
+
+async def test_charging_starts_at_the_start_soc() -> None:
+    manager = _harness(charge=0, dcpower=6000, load=2200, battery=-2700, soc=50, start_soc=50)
+    await _run(manager, p1=-800)
+    assert manager.surplus_charge == 750
+
+
+async def test_start_soc_has_a_hysteresis() -> None:
+    manager = _harness(charge=1000, dcpower=6000, load=2200, battery=-2700, soc=50, start_soc=50)
+    await _run(manager, p1=-60)
+    assert manager.surplus_charge == 1000
+    manager.pv_soc = 48.5
+    manager.surplus_dirty = True
+    await _run(manager, p1=-60)
+    assert manager.surplus_charge == 1000
+    manager.pv_soc = 47.9
+    manager.surplus_dirty = True
+    await _run(manager, p1=-60)
+    assert manager.surplus_charge == 0
+
+
+async def test_start_soc_above_max_soc_still_starts_when_full() -> None:
+    manager = _harness(charge=0, dcpower=3000, load=3000, battery=0, soc=89.5, max_soc=90, start_soc=95)
+    await _run(manager, p1=0)
+    assert manager.surplus_charge == 100

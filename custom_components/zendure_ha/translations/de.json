@@ -23,6 +23,7 @@
           "pv_meter": "Primär-PV: Sensor Netzleistung (optional)",
           "pv_battery": "Primär-PV: Sensor Akkuleistung (optional)",
           "pv_soc": "Primär-PV: Sensor Akku-Ladestand (optional)",
+          "pv_max_soc": "Primär-PV: Max-Ladestand des Akkus, z. B. Wechselrichter-Einstellung (optional)",
           "mqttlog": "MQTT-Kommunikation loggen",
           "mqttlocal": "Lokales MQTT verwenden",
           "auto_mqtt_user": "MQTT-Benutzer automatisch verwalten",
@@ -39,6 +40,7 @@
           "pv_meter": "Primär-PV: Sensor Netzleistung (optional)",
           "pv_battery": "Primär-PV: Sensor Akkuleistung (optional)",
           "pv_soc": "Primär-PV: Sensor Akku-Ladestand (optional)",
+          "pv_max_soc": "Primär-PV: Max-Ladestand des Akkus, z. B. Wechselrichter-Einstellung (optional)",
           "mqttlog": "MQTT-Kommunikation loggen",
           "mqttlocal": "Lokales MQTT verwenden",
           "auto_mqtt_user": "MQTT-Benutzer automatisch verwalten",
@@ -58,6 +60,7 @@
           "pv_meter": "Primär-PV: Sensor Netzleistung (optional)",
           "pv_battery": "Primär-PV: Sensor Akkuleistung (optional)",
           "pv_soc": "Primär-PV: Sensor Akku-Ladestand (optional)",
+          "pv_max_soc": "Primär-PV: Max-Ladestand des Akkus, z. B. Wechselrichter-Einstellung (optional)",
           "mqttlog": "MQTT-Kommunikation loggen",
           "auto_mqtt_user": "MQTT-Benutzer automatisch verwalten"
         },
@@ -123,6 +126,9 @@
       "surplus_probe": {
         "name": "Solar-Überschuss Probing-Schritt"
       },
+      "surplus_start_soc": {
+        "name": "Solar-Überschuss Start ab Primär-Ladestand"
+      },
       "min_soc": {
         "name": "SoC-Minimum"
       },
@@ -163,6 +169,9 @@
       },
       "pv_soc": {
         "name": "Primär-PV Batterie-SoC"
+      },
+      "pv_max_soc": {
+        "name": "Primär-PV Batterie-Max-SoC"
       },
       "auto_model": {
         "name": "Energieplan",

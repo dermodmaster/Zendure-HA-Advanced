@@ -12,6 +12,7 @@ CONF_PV_LOAD = "pv_load"  # Load Power of the primary PV system
 CONF_PV_METER = "pv_meter"  # Meter active power (grid) of the primary PV system
 CONF_PV_BATTERY = "pv_battery"  # Battery Power of the primary PV system (neg = charging)
 CONF_PV_SOC = "pv_soc"  # State of charge of the primary battery
+CONF_PV_MAX_SOC = "pv_max_soc"  # Maximum state of charge of the primary battery (e.g. its inverter setting)
 CONF_PRICE = "price"
 CONF_MQTTLOG = "mqttlog"
 CONF_MQTTLOCAL = "mqttlocal"
@@ -83,5 +84,6 @@ class SmartMode:
     SURPLUS_SETTLE = timedelta(seconds=8)  # Wait after a charge step before probing upwards again
     SURPLUS_SETTLE_DOWN = timedelta(0)  # Back off on every fresh reading: the back-off target is absolute, it cannot wind down
     SURPLUS_DEADBAND = 15  # Minimum surplus margin (W) before adjusting the charge target
-    SURPLUS_SOCFULL = 99  # Primary battery SoC (%) at/above which it counts as full
+    SURPLUS_SOCFULL_MARGIN = 1  # Primary battery counts as full at its maximum SoC minus this margin (%)
+    SURPLUS_START_HYSTERESIS = 2  # Charging stops this far (%) below the start SoC of the primary battery
     SURPLUS_HOLD = timedelta(minutes=2)  # After charging, stay in charge mode this long before covering grid import
