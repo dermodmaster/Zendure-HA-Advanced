@@ -12,6 +12,7 @@ CONF_PV_LOAD = "pv_load"  # Load Power of the primary PV system
 CONF_PV_METER = "pv_meter"  # Meter active power (grid) of the primary PV system
 CONF_PV_BATTERY = "pv_battery"  # Battery Power of the primary PV system (neg = charging)
 CONF_PV_SOC = "pv_soc"  # State of charge of the primary battery
+CONF_PV_MAX_SOC = "pv_max_soc"  # Maximum state of charge of the primary battery (e.g. its inverter setting)
 CONF_PRICE = "price"
 CONF_MQTTLOG = "mqttlog"
 CONF_MQTTLOCAL = "mqttlocal"
@@ -81,7 +82,16 @@ class SmartMode:
 
     # Solar surplus mode (charging without grid feed-in)
     SURPLUS_SETTLE = timedelta(seconds=8)  # Wait after a charge step before probing upwards again
-    SURPLUS_SETTLE_DOWN = timedelta(seconds=6)  # Wait before backing off again: devices and primary readings need ~6 s to follow
+    SURPLUS_SETTLE_DOWN = timedelta(0)  # Back off on every fresh reading: the back-off target is absolute, it cannot wind down
     SURPLUS_DEADBAND = 15  # Minimum surplus margin (W) before adjusting the charge target
-    SURPLUS_SOCFULL = 99  # Primary battery SoC (%) at/above which it counts as full
+    SURPLUS_SOCFULL_MARGIN = 1  # Primary battery counts as full at its maximum SoC minus this margin (%)
+    SURPLUS_START_HYSTERESIS = 2  # Charging stops this far (%) below the start SoC of the primary battery
+
+    # Charge limit of the primary battery, set by the manager in its inverter (e.g. 80 %)
+    PRIMARY_SATURATED_FEEDIN = 200  # Feed-in (W) while the Zendure charges at its maximum = it cannot take all surplus
+    PRIMARY_SATURATED_TIME = timedelta(minutes=2)  # ... for this long -> lift the limit for the rest of the day
+    PRIMARY_NIGHT_PV = 50  # Primary PV power (W) below which it is night: re-arm the limit for the next day
+    PRIMARY_FULL_CHARGE_WEEKDAY = 5  # Saturday: charge the primary battery to 100 % (BMS calibration, cell balancing)
+    PRIMARY_FULL_SOC = 99  # Primary SoC (%) that counts as the weekly full charge being done
+    PRIMARY_WRITE_INTERVAL = timedelta(minutes=1)  # Minimum time between two writes to the inverter
     SURPLUS_HOLD = timedelta(minutes=2)  # After charging, stay in charge mode this long before covering grid import

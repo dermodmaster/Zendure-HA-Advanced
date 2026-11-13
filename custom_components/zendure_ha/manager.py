@@ -33,6 +33,7 @@ from .const import (
     CONF_PV_DCPOWER,
     CONF_PV_LOAD,
     CONF_PV_METER,
+    CONF_PV_MAX_SOC,
     CONF_PV_SOC,
     DOMAIN,
     DeviceState,
@@ -87,10 +88,18 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.pv_meter: float | None = None
         self.pv_battery: float | None = None
         self.pv_soc: float | None = None
+        self.pv_max_soc: float | None = None
+        self.pv_max_soc_entity: str | None = None
+        self.primary_limit_lifted = False
+        self.primary_full_charge_due = False
+        self.primary_limit_next = datetime.min
         self.surplus_charge = 0
         self.surplus_next = datetime.min
         self.surplus_next_down = datetime.min
         self.surplus_last_charge = datetime.min
+        self.surplus_seen_input = 0
+        self.surplus_released = False
+        self.surplus_saturated_since: datetime | None = None
         self.surplus_dirty = False
 
         self.charge: list[ZendureDevice] = []
@@ -134,6 +143,11 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         # probing step for the solar surplus mode (0 = disabled); seed a sensible default on first start
         self.surplus_probe = ZendureRestoreNumber(self, "surplus_probe", None, None, "W", "power", 2000, 0, NumberMode.BOX, True)
         self.surplus_probe._attr_native_value = 100  # noqa: SLF001
+        # charge limit the manager sets on the primary battery until the Zendure is full (100 = off); seed on first start
+        self.primary_limit = ZendureRestoreNumber(self, "primary_limit", None, None, "%", None, 100, 0, NumberMode.BOX, True)
+        self.primary_limit._attr_native_value = 100  # noqa: SLF001
+        # primary battery SoC from which the solar surplus mode starts charging the Zendure (0 = always)
+        self.surplus_start_soc = ZendureRestoreNumber(self, "surplus_start_soc", None, None, "%", None, 100, 0, NumberMode.BOX, True)
 
         # Automation status + master switch (charge/discharge control on/off)
         self.automationActive = ZendureBinarySensor(self, "automation_active", None, "running")
@@ -329,6 +343,9 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.surplus_next = datetime.min
         self.surplus_next_down = datetime.min
         self.surplus_last_charge = datetime.min
+        self.surplus_seen_input = 0
+        self.surplus_released = False
+        self.surplus_saturated_since: datetime | None = None
         self.surplus_dirty = operation == ManagerMode.SOLAR_SURPLUS
 
         # reflect the automation status on the status sensor and master switch
@@ -417,7 +434,12 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             "pv_meter": ("W", "power"),
             "pv_battery": ("W", "power"),
             "pv_soc": ("%", "battery"),
+            "pv_max_soc": ("%", None),
         }
+
+        # the manager writes the charge limit of the primary battery to this entity, if it is writable
+        entity = data.get(CONF_PV_MAX_SOC) or None
+        self.pv_max_soc_entity = entity if entity is not None and entity.split(".")[0] in ("number", "input_number") else None
 
         # map each configured entity to the attribute that caches its latest value
         self.pv_entities: dict[str, str] = {}
@@ -427,6 +449,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             (CONF_PV_METER, "pv_meter"),
             (CONF_PV_BATTERY, "pv_battery"),
             (CONF_PV_SOC, "pv_soc"),
+            (CONF_PV_MAX_SOC, "pv_max_soc"),
         ):
             entity_id = data.get(conf)
             if not entity_id:
@@ -500,6 +523,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             p1 = int(self.p1_factor * float(new_state.state))
         except ValueError:
             return
+        self.surplus_seen_input = self.devices_input()
 
         # Get time & update simulation
         time = datetime.now()
@@ -537,6 +561,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             setattr(self, attr, value)
         except (ValueError, TypeError):
             return
+        self.surplus_seen_input = self.devices_input()
 
         # mirror the value and keep the live surplus margin up to date (independent of mode)
         if (sensor := self.pv_sensors.get(attr)) is not None:
@@ -579,6 +604,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             for fg in self.fuseGroups:
                 fg.initPower = True
             await self.powerChanged(p1, isFast, time)
+            await self.update_primary_limit(time)
         except Exception as err:
             _LOGGER.error(err)
             _LOGGER.error(traceback.format_exc())
@@ -819,6 +845,48 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                         break
             self.pwr_low: int = 0
 
+    async def update_primary_limit(self, time: datetime) -> None:
+        """Set the charge limit of the primary battery: it charges to the limit, the Zendure takes the rest."""
+        if self.pv_max_soc_entity is None or self.operation in (ManagerMode.OFF, ManagerMode.MANUAL):
+            return
+
+        # lift the limit once the Zendure is full (the surplus case is detected in power_surplus); keep it lifted
+        # for the rest of the day and re-arm it at night
+        devices = [d for d in self.devices if d.online]
+        if devices and all(d.state == DeviceState.SOCFULL for d in devices):
+            self.primary_limit_lifted = True
+        if self.pv_dcpower is not None and self.pv_dcpower < SmartMode.PRIMARY_NIGHT_PV:
+            self.primary_limit_lifted = False
+
+        # weekly full charge, kept due until the primary battery was full once
+        if time.weekday() == SmartMode.PRIMARY_FULL_CHARGE_WEEKDAY:
+            self.primary_full_charge_due = True
+        elif self.pv_soc is not None and self.pv_soc >= SmartMode.PRIMARY_FULL_SOC:
+            self.primary_full_charge_due = False
+
+        limit = int(self.primary_limit.asNumber)
+        desired = 100 if limit >= 100 or self.primary_limit_lifted or self.primary_full_charge_due else limit
+        if (state := self.hass.states.get(self.pv_max_soc_entity)) is None:
+            return
+        desired = int(max(state.attributes.get("min", 0), min(state.attributes.get("max", 100), desired)))
+        try:
+            current = float(state.state)
+        except (ValueError, TypeError):
+            current = None
+        if current is not None and abs(current - desired) < 1:
+            return
+        if time < self.primary_limit_next:
+            return
+
+        _LOGGER.info("Primary battery charge limit %s => %s%%", current, desired)
+        self.primary_limit_next = time + SmartMode.PRIMARY_WRITE_INTERVAL
+        domain = self.pv_max_soc_entity.split(".")[0]
+        await self.hass.services.async_call(domain, "set_value", {"entity_id": self.pv_max_soc_entity, "value": desired})
+
+    def devices_input(self) -> int:
+        """Return the power the devices currently take from the home grid."""
+        return sum(d.homeInput.asInt for d in self.devices)
+
     async def power_surplus(self, p1: int, time: datetime) -> None:
         """Charge from PV surplus of the primary system; its DC-coupled battery has priority."""
         # While the primary battery is not full, the Zendure only takes the grid feed-in above a small
@@ -835,6 +903,9 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             await self.power_discharge(max(0, p1))
             return
 
+        # the primary battery counts as full at its configured maximum SoC (e.g. limited to 90 % in the inverter)
+        full_soc = (100 if self.pv_max_soc is None else self.pv_max_soc) - SmartMode.SURPLUS_SOCFULL_MARGIN
+
         # advance the probing step only on a fresh reading; backing off is allowed sooner than probing upwards
         if self.surplus_dirty and time > self.surplus_next_down:
             margin = int(self.pv_dcpower - self.pv_load)
@@ -843,28 +914,23 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             # grid, so it has priority. While it is not full, only feed-in above the reserve is surplus it
             # cannot take; the reserve keeps a small feed-in as feedback that it is still charging at its limit.
             # When it is full nothing is reserved.
-            primary_full = (self.pv_soc is not None and self.pv_soc >= SmartMode.SURPLUS_SOCFULL) or (
+            primary_full = (self.pv_soc is not None and self.pv_soc >= full_soc) or (
                 self.pv_soc is None and self.pv_battery is not None and abs(self.pv_battery) < SmartMode.SURPLUS_DEADBAND and margin > 0
             )
             eff_offset = 0 if primary_full else int(self.surplus_offset.asNumber)
             # grid meter: positive = import, negative = feed-in
             feed_in = max(0, -p1)
 
-            # feedback that we took too much: the primary battery being loaded (preferred; neg = charging,
-            # so a positive value means it is discharging to supply load) or, as a fallback, real grid import.
-            if self.pv_battery is not None and self.pv_battery > SmartMode.SURPLUS_DEADBAND:
-                overshoot = int(self.pv_battery)
-            elif self.pv_meter is not None and self.pv_meter > SmartMode.SURPLUS_DEADBAND:
-                overshoot = int(self.pv_meter)
-            else:
+            # feedback that we took too much: the primary battery discharging (neg = charging) plus grid import
+            overshoot = max(0, int(self.pv_battery or 0)) + max(0, p1)
+            if overshoot <= SmartMode.SURPLUS_DEADBAND:
                 overshoot = 0
 
             if overshoot > 0:
-                # primary battery is being loaded / grid import -> reduce the charge target, starting from what
-                # the devices really take: they lag behind the target, and cutting the target again on every
-                # reading winds it down to 0
-                actual = sum(d.homeInput.asInt for d in self.devices)
-                step = min(0, actual - self.surplus_charge) - overshoot
+                # primary battery is loaded / grid import -> reduce the target to what the devices took when these
+                # readings were taken, minus the overshoot. The target is absolute, so a second reading of the same
+                # state does not cut again, and the devices lagging behind the target cannot wind it down to 0.
+                step = min(0, self.surplus_seen_input - overshoot - self.surplus_charge)
             elif primary_full:
                 # primary battery full and not loaded -> probe upward to harvest the curtailed surplus
                 step = max(margin - eff_offset, int(self.surplus_probe.asNumber))
@@ -879,6 +945,17 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                 # DC - Load is not used here, it contains the inverter losses and would ramp the Zendure up.
                 step = -eff_offset - int(self.surplus_probe.asNumber)
 
+            # the Zendure takes its maximum and surplus is still fed in: the primary battery has to take the rest,
+            # so lift its charge limit once this lasts
+            max_charge = -sum(d.charge_limit for d in self.devices)
+            if feed_in > SmartMode.PRIMARY_SATURATED_FEEDIN and self.surplus_charge >= max_charge - SmartMode.SURPLUS_DEADBAND:
+                if self.surplus_saturated_since is None:
+                    self.surplus_saturated_since = time
+                elif time - self.surplus_saturated_since >= SmartMode.PRIMARY_SATURATED_TIME:
+                    self.primary_limit_lifted = True
+            else:
+                self.surplus_saturated_since = None
+
             self.surplusMargin.update_value(margin)
             self.surplusEffOffset.update_value(eff_offset)
             self.surplusPrimaryFull.update_value(1 if primary_full else 0)
@@ -888,7 +965,6 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                 pass
             else:
                 if abs(step) >= SmartMode.SURPLUS_DEADBAND:
-                    max_charge = -sum(d.charge_limit for d in self.devices)
                     self.surplus_charge = max(0, min(self.surplus_charge + step, max_charge))
                     _LOGGER.info(
                         "Surplus => margin:%sW reserve:%sW overshoot:%sW step:%sW target:%sW battery:%s meter:%s",
@@ -904,6 +980,18 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                 self.surplus_dirty = False
                 self.surplus_next = time + SmartMode.SURPLUS_SETTLE
                 self.surplus_next_down = time + SmartMode.SURPLUS_SETTLE_DOWN
+
+        # charge the Zendure only once the primary battery reached the start SoC; stop a bit below it (hysteresis)
+        if self.pv_soc is None:
+            self.surplus_released = True
+        else:
+            start = min(self.surplus_start_soc.asNumber, full_soc)
+            if self.pv_soc >= start:
+                self.surplus_released = True
+            elif self.pv_soc < start - SmartMode.SURPLUS_START_HYSTERESIS:
+                self.surplus_released = False
+        if not self.surplus_released:
+            self.surplus_charge = 0
 
         self.surplusTarget.update_value(self.surplus_charge)
 

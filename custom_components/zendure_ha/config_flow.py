@@ -26,6 +26,7 @@ from .const import (
     CONF_PV_DCPOWER,
     CONF_PV_LOAD,
     CONF_PV_METER,
+    CONF_PV_MAX_SOC,
     CONF_PV_SOC,
     CONF_SIM,
     CONF_WIFIPSW,
@@ -52,6 +53,7 @@ class ZendureConfigFlow(ConfigFlow, domain=DOMAIN):
             vol.Optional(CONF_PV_METER): selector.EntitySelector(),
             vol.Optional(CONF_PV_BATTERY): selector.EntitySelector(),
             vol.Optional(CONF_PV_SOC): selector.EntitySelector(),
+            vol.Optional(CONF_PV_MAX_SOC): selector.EntitySelector(),
             vol.Required(CONF_MQTTLOG): bool,
             vol.Required(CONF_MQTTLOCAL): bool,
         }
@@ -189,6 +191,7 @@ class ZendureOptionsFlowHandler(OptionsFlow):
                 vol.Optional(CONF_PV_METER, default=data.get(CONF_PV_METER, "")): str,
                 vol.Optional(CONF_PV_BATTERY, default=data.get(CONF_PV_BATTERY, "")): str,
                 vol.Optional(CONF_PV_SOC, default=data.get(CONF_PV_SOC, "")): str,
+                vol.Optional(CONF_PV_MAX_SOC, default=data.get(CONF_PV_MAX_SOC, "")): str,
                 vol.Required(CONF_MQTTLOG, default=data[CONF_MQTTLOG]): bool,
                 vol.Optional(CONF_AUTO_MQTT_USER, default=data.get(CONF_AUTO_MQTT_USER, False)): bool,
                 vol.Optional(CONF_SIM, default=data.get(CONF_SIM, False)): bool,

@@ -23,6 +23,7 @@
           "pv_meter": "Primary PV: Meter active power sensor (optional)",
           "pv_battery": "Primary PV: Battery Power sensor (optional)",
           "pv_soc": "Primary PV: Battery state of charge sensor (optional)",
+          "pv_max_soc": "Primary PV: Battery maximum state of charge, e.g. the inverter setting (optional)",
           "mqttlog": "Log MQTT communication",
           "mqttlocal": "Use local MQTT",
           "auto_mqtt_user": "Automatically manage MQTT users",
@@ -50,6 +51,7 @@
           "pv_meter": "Primary PV: Meter active power sensor (optional)",
           "pv_battery": "Primary PV: Battery Power sensor (optional)",
           "pv_soc": "Primary PV: Battery state of charge sensor (optional)",
+          "pv_max_soc": "Primary PV: Battery maximum state of charge, e.g. the inverter setting (optional)",
           "mqttlog": "Log MQTT communication",
           "mqttlocal": "Use local MQTT",
           "auto_mqtt_user": "Automatically manage MQTT users",
@@ -69,6 +71,7 @@
           "pv_meter": "Primary PV: Meter active power sensor (optional)",
           "pv_battery": "Primary PV: Battery Power sensor (optional)",
           "pv_soc": "Primary PV: Battery state of charge sensor (optional)",
+          "pv_max_soc": "Primary PV: Battery maximum state of charge, e.g. the inverter setting (optional)",
           "mqttlog": "Log MQTT communication",
           "auto_mqtt_user": "Automatically manage MQTT users"
         },
@@ -134,6 +137,12 @@
       "surplus_probe": {
         "name": "Solar Surplus Probing Step"
       },
+      "surplus_start_soc": {
+        "name": "Solar Surplus Start at Primary SoC"
+      },
+      "primary_limit": {
+        "name": "Primary Battery Charge Limit"
+      },
       "min_soc": {
         "name": "SoC Minimum"
       },
@@ -174,6 +183,9 @@
       },
       "pv_soc": {
         "name": "Primary PV Battery SoC"
+      },
+      "pv_max_soc": {
+        "name": "Primary PV Battery Max SoC"
       },
       "auto_model": {
         "name": "Battery Program",

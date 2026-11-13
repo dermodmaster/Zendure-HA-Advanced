@@ -19,6 +19,7 @@
           "pv_meter": "Pierwotny PV: czujnik mocy sieci (opcjonalnie)",
           "pv_battery": "Pierwotny PV: czujnik mocy baterii (opcjonalnie)",
           "pv_soc": "Pierwotny PV: czujnik stanu naładowania baterii (opcjonalnie)",
+          "pv_max_soc": "Pierwotny PV: maksymalny stan naładowania baterii (opcjonalnie)",
           "mqttlog": "Rejestruj komunikację MQTT",
           "mqttlocal": "Użyj lokalnego MQTT",
           "auto_mqtt_user": "Automatycznie zarządzaj użytkownikami MQTT",
@@ -46,6 +47,7 @@
           "pv_meter": "Pierwotny PV: czujnik mocy sieci (opcjonalnie)",
           "pv_battery": "Pierwotny PV: czujnik mocy baterii (opcjonalnie)",
           "pv_soc": "Pierwotny PV: czujnik stanu naładowania baterii (opcjonalnie)",
+          "pv_max_soc": "Pierwotny PV: maksymalny stan naładowania baterii (opcjonalnie)",
           "mqttlog": "Rejestruj komunikację MQTT",
           "mqttlocal": "Użyj lokalnego MQTT",
           "auto_mqtt_user": "Automatycznie zarządzaj użytkownikami MQTT",
@@ -65,6 +67,7 @@
           "pv_meter": "Pierwotny PV: czujnik mocy sieci (opcjonalnie)",
           "pv_battery": "Pierwotny PV: czujnik mocy baterii (opcjonalnie)",
           "pv_soc": "Pierwotny PV: czujnik stanu naładowania baterii (opcjonalnie)",
+          "pv_max_soc": "Pierwotny PV: maksymalny stan naładowania baterii (opcjonalnie)",
           "mqttlog": "Rejestruj komunikację MQTT",
           "auto_mqtt_user": "Automatycznie zarządzaj użytkownikami MQTT"
         },

@@ -25,6 +25,7 @@
           "pv_meter": "PV primaire : capteur puissance réseau (optionnel)",
           "pv_battery": "PV primaire : capteur puissance batterie (optionnel)",
           "pv_soc": "PV primaire : capteur état de charge batterie (optionnel)",
+          "pv_max_soc": "PV primaire : état de charge maximal batterie (optionnel)",
           "mqttlog": "Journaliser la communication MQTT",
           "mqttlocal": "Utiliser MQTT local",
           "auto_mqtt_user": "Gérer automatiquement les utilisateurs MQTT",
@@ -54,6 +55,7 @@
           "pv_meter": "PV primaire : capteur puissance réseau (optionnel)",
           "pv_battery": "PV primaire : capteur puissance batterie (optionnel)",
           "pv_soc": "PV primaire : capteur état de charge batterie (optionnel)",
+          "pv_max_soc": "PV primaire : état de charge maximal batterie (optionnel)",
           "mqttlog": "Journaliser la communication MQTT",
           "mqttlocal": "Utiliser MQTT local",
           "auto_mqtt_user": "Gérer automatiquement les utilisateurs MQTT",
@@ -74,6 +76,7 @@
           "pv_meter": "PV primaire : capteur puissance réseau (optionnel)",
           "pv_battery": "PV primaire : capteur puissance batterie (optionnel)",
           "pv_soc": "PV primaire : capteur état de charge batterie (optionnel)",
+          "pv_max_soc": "PV primaire : état de charge maximal batterie (optionnel)",
           "mqttlog": "Journaliser communication MQTT",
           "auto_mqtt_user": "Gérer automatiquement les utilisateurs MQTT"
         },
