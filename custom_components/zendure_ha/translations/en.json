@@ -137,12 +137,6 @@
       "surplus_probe": {
         "name": "Solar Surplus Probing Step"
       },
-      "surplus_start_soc": {
-        "name": "Solar Surplus Start at Primary SoC"
-      },
-      "primary_limit": {
-        "name": "Primary Battery Charge Limit"
-      },
       "min_soc": {
         "name": "SoC Minimum"
       },

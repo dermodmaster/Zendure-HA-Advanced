@@ -126,12 +126,6 @@
       "surplus_probe": {
         "name": "Solar-Überschuss Probing-Schritt"
       },
-      "surplus_start_soc": {
-        "name": "Solar-Überschuss Start ab Primär-Ladestand"
-      },
-      "primary_limit": {
-        "name": "Primär-Akku Ladegrenze"
-      },
       "min_soc": {
         "name": "SoC-Minimum"
       },
