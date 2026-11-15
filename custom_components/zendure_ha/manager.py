@@ -802,11 +802,17 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                     await self.power_discharge(setpoint)
 
             case ManagerMode.MATCHING_DISCHARGE:
-                # The primary battery regulates the same meter to zero. Count its discharge as demand and
-                # its charging as excess, so the Zendure covers the load first and never charges it.
-                # Half steps: its readings lag behind the Zendure output.
+                # The primary battery regulates the same meter to zero. Half steps: its readings lag
+                # behind the Zendure output.
+                # Zendure priority: the Zendure covers the load, including the primary's discharge, and
+                # never charges the primary battery.
+                # Primary priority: the primary covers the load up to its power minus a margin; the
+                # Zendure only takes what exceeds that.
                 if self.pv_battery is not None:
-                    setpoint += int(self.pv_battery / 2)
+                    if self.discharge_hold.value == Priority.PRIMARY:
+                        setpoint += int((self.pv_battery - (self.primary_power - SmartMode.PRIMARY_POWER_MARGIN)) / 2)
+                    else:
+                        setpoint += int(self.pv_battery / 2)
                 # Discharge to cover demand and always pass through available solar; never charge
                 await self.power_discharge(max(self.produced, setpoint))
 

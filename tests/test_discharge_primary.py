@@ -12,6 +12,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Any
 
+from custom_components.zendure_ha.balance import Priority
 from custom_components.zendure_ha.const import DeviceState, ManagerMode
 from custom_components.zendure_ha.manager import ZendureManager
 
@@ -50,7 +51,7 @@ class _DischargingDevice:
         return True
 
 
-def _harness(*, output: int, battery: float | None) -> ZendureManager:
+def _harness(*, output: int, battery: float | None, priority: Priority = Priority.ZENDURE) -> ZendureManager:
     manager = object.__new__(ZendureManager)
     manager.operation = ManagerMode.MATCHING_DISCHARGE
     manager.devices = [_DischargingDevice(output)]
@@ -73,6 +74,8 @@ def _harness(*, output: int, battery: float | None) -> ZendureManager:
     manager.availableKwh = _RecordingSensor()
     manager.globalSoc = _RecordingSensor()
     manager.discharge_calls = []
+    manager.discharge_hold = SimpleNamespace(value=priority)
+    manager.primary_power = 2750
 
     async def power_discharge(setpoint: int) -> None:
         manager.discharge_calls.append(setpoint)
@@ -115,4 +118,24 @@ async def test_idle_primary_battery_keeps_meter_matching() -> None:
 
 async def test_without_primary_battery_sensor_behaviour_is_unchanged() -> None:
     manager = _harness(output=300, battery=None)
+    assert await _run(manager, p1=40) == 340
+
+
+async def test_primary_covers_a_small_load() -> None:
+    manager = _harness(output=300, battery=400, priority=Priority.PRIMARY)
+    assert await _run(manager, p1=0) == 0
+
+
+async def test_zendure_covers_what_exceeds_the_primary_power() -> None:
+    load, zendure = 3500, 0
+    for _ in range(12):
+        battery = min(2750, load - zendure)
+        p1 = load - zendure - battery
+        manager = _harness(output=zendure, battery=battery, priority=Priority.PRIMARY)
+        zendure = await _run(manager, p1=p1)
+    assert abs(zendure - (3500 - 2500)) < 20
+
+
+async def test_primary_priority_without_battery_sensor_matches_the_meter() -> None:
+    manager = _harness(output=300, battery=None, priority=Priority.PRIMARY)
     assert await _run(manager, p1=40) == 340

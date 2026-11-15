@@ -102,5 +102,6 @@ class SmartMode:
 
     PRIMARY_CAPACITY = 6.4  # Default capacity of the primary battery (kWh)
     PRIMARY_POWER = 2750  # Default charge/discharge power of the primary battery (W)
+    PRIMARY_POWER_MARGIN = 250  # Power (W) the primary battery keeps in reserve before the Zendure takes over in primary priority
     PRIMARY_MIN_SOC = 5  # Default minimum SoC of the primary battery (%)
     PRIMARY_LEAD = 15  # Default fill level lead (percentage points) of the primary battery in a mixed or unknown forecast
