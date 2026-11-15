@@ -46,7 +46,12 @@ class _LastFullCharge:
 
 
 def _v(value: float) -> SimpleNamespace:
-    return SimpleNamespace(asNumber=value, asInt=int(value))
+    return SimpleNamespace(asNumber=value, asInt=int(value), native_value=value)
+
+
+def _no_value() -> SimpleNamespace:
+    """A sensor without a value yet: `asNumber` reads 0 then, `native_value` is None."""
+    return SimpleNamespace(asNumber=0, asInt=0, native_value=None)
 
 
 def _watts(power: int, count: int) -> dict[str, int]:
@@ -194,6 +199,15 @@ def test_all_zendures_offline_falls_back_to_today() -> None:
     assert m.dischargePriority.last == "zendure"
 
 
+def test_online_zendure_without_soc_falls_back_to_today() -> None:
+    m = _harness(pv_soc=80, zendure_soc=10, watts=_watts(6000, 8), pv_load=500)
+    m.devices[0].electricLevel = _no_value()
+    ZendureManager.update_balance(m, NOW)
+    assert m.zendureFill.last is None
+    assert m.chargePriority.last == "primary"
+    assert m.dischargePriority.last == "zendure"
+
+
 def test_house_load_excludes_the_zendure() -> None:
     m = _harness(pv_soc=50, zendure_soc=40, watts=_watts(800, 16), pv_load=2000)
     m.devices[0].homeInput = _v(1500)
@@ -212,8 +226,11 @@ def test_stage_is_recomputed_only_every_15_minutes() -> None:
     m = _harness(pv_soc=50, zendure_soc=40, watts=_watts(6000, 8), pv_load=500)
     ZendureManager.update_balance(m, NOW)
     m.forecast_watts = _watts(800, 16)  # harness reads this on states.get
+    # without the gate the second cloudy result would already switch the stage
     ZendureManager.update_balance(m, NOW + timedelta(minutes=5))
+    ZendureManager.update_balance(m, NOW + timedelta(minutes=10))
     assert m.forecastStage.last == "sunny"
+    assert m.forecast_next == NOW + SmartMode.FORECAST_INTERVAL
 
 
 def test_fill_levels_are_published_as_whole_percent() -> None:

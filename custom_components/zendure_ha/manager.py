@@ -546,7 +546,12 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         # fill levels between the minimum and maximum SoC
         max_soc = self.pv_max_soc or 100
         fill_s = fill_level(self.pv_soc, self.primary_min_soc, max_soc)
-        packs = [Pack(d.electricLevel.asNumber, d.minSoc.asNumber, d.socSet.asNumber, d.kWh, -d.charge_limit) for d in self.devices if d.online]
+        # a device without a reported SoC counts like an offline one (asNumber would read 0 %)
+        packs = [
+            Pack(d.electricLevel.asNumber, d.minSoc.asNumber, d.socSet.asNumber, d.kWh, -d.charge_limit)
+            for d in self.devices
+            if d.online and d.electricLevel.native_value is not None
+        ]
         fill_z = zendure_fill(packs)
 
         # classify the rest of today from the solar forecast
