@@ -193,6 +193,15 @@ async def test_back_off_starts_from_what_the_devices_take() -> None:
     assert manager.surplus_charge == 2500
 
 
+async def test_back_off_uses_the_device_input_now_when_the_report_lagged() -> None:
+    # 2026-11-13 13:40:06: Keller still reported 53 W when the import of ~700 W was measured, but already
+    # took 1411 W; cutting from 53 W set the target to 0
+    manager = _harness(charge=1411, dcpower=1175, load=2600, battery=0, soc=100, meter=700, actual=1411)
+    manager.surplus_seen_input = 53
+    await _run(manager, p1=700)
+    assert manager.surplus_charge == 1411 - 700
+
+
 async def test_repeated_readings_of_one_state_do_not_cut_again() -> None:
     manager = _harness(charge=4800, dcpower=8000, load=9200, battery=1143, soc=100, actual=4763)
     now = datetime.now()
@@ -205,12 +214,14 @@ async def test_repeated_readings_of_one_state_do_not_cut_again() -> None:
 
 
 async def test_observed_back_off_sequence_does_not_wind_down_to_zero() -> None:
-    # 2026-11-13 12:37:55-12:38:04: (primary battery discharge, device input when it was measured)
+    # 2026-11-13 12:37:55-12:38:04: (primary battery discharge, device input when it was measured, device input now)
     manager = _harness(charge=4800, dcpower=8000, load=9200, battery=0, soc=100)
     now = datetime.now()
-    for i, (battery, seen) in enumerate([(1143, 4763), (2156, 4464), (1533, 4464)]):
+    for i, (battery, seen, now_input) in enumerate([(1143, 4763, 4763), (2156, 4464, 4464), (1533, 4464, 1899)]):
         manager.pv_battery = battery
         manager.surplus_seen_input = seen
+        manager.devices[0].homeInput.asInt = now_input // 2
+        manager.devices[1].homeInput.asInt = now_input - now_input // 2
         manager.surplus_dirty = True
         await ZendureManager.power_surplus(manager, 0, now + timedelta(seconds=3 * i))
     assert manager.surplus_charge == 4464 - 2156

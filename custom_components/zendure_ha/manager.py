@@ -930,7 +930,9 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                 # primary battery is loaded / grid import -> reduce the target to what the devices took when these
                 # readings were taken, minus the overshoot. The target is absolute, so a second reading of the same
                 # state does not cut again, and the devices lagging behind the target cannot wind it down to 0.
-                step = min(0, self.surplus_seen_input - overshoot - self.surplus_charge)
+                # device reports can lag behind the actual draw, so the current device input is the base as well
+                base = max(self.surplus_seen_input, self.devices_input())
+                step = min(0, base - overshoot - self.surplus_charge)
             elif primary_full:
                 # primary battery full and not loaded -> probe upward to harvest the curtailed surplus
                 step = max(margin - eff_offset, int(self.surplus_probe.asNumber))
