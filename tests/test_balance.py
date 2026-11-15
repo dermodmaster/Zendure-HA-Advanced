@@ -6,13 +6,19 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from custom_components.zendure_ha.balance import (
+    LoadTracker,
     Pack,
     Priority,
     PriorityHold,
+    Stage,
+    StageFilter,
     charge_choice,
+    classify,
     discharge_choice,
     fill_level,
+    forecast_slots,
     full_charge_due,
+    lead_for,
     zendure_fill,
 )
 
@@ -89,3 +95,87 @@ def test_full_charge_done_once_per_week() -> None:
     assert not full_charge_due(done, datetime(2026, 11, 15, 12, 0, tzinfo=BER))
     assert not full_charge_due(done, datetime(2026, 11, 20, 23, 59, tzinfo=BER))
     assert full_charge_due(done, datetime(2026, 11, 21, 0, 0, tzinfo=BER))
+
+
+NOW = datetime(2026, 11, 15, 12, 10, tzinfo=BER)  # 11:10 UTC
+
+
+def test_forecast_slots_keep_the_rest_of_today() -> None:
+    watts = {
+        "2026-11-15T10:45:00+00:00": 900,  # 11:45-12:00 local, over
+        "2026-11-15T11:00:00+00:00": 1000,  # current slot
+        "2026-11-15T11:15:00+00:00": 1200,
+        "2026-11-15T15:30:00+00:00": 0,
+        "2026-11-15T23:15:00+00:00": 500,  # 00:15 local on the 16th
+    }
+    assert forecast_slots(watts, NOW) == [1000, 1200]
+
+
+def test_forecast_slots_after_sunset_are_empty_not_missing() -> None:
+    assert forecast_slots({"2026-11-15T15:30:00+00:00": 0}, NOW) == []
+
+
+def test_forecast_slots_missing_or_broken() -> None:
+    assert forecast_slots(None, NOW) is None
+    assert forecast_slots("unavailable", NOW) is None
+    assert forecast_slots({}, NOW) is None
+    assert forecast_slots({"bad": 5, "2026-11-15T11:00:00+00:00": "abc"}, NOW) is None
+    assert forecast_slots({"2026-11-14T11:00:00+00:00": 800}, NOW) is None  # yesterday only
+
+
+def _classify(slots: list[float]) -> tuple[Stage, float, float]:
+    return classify(slots, expected_load=500, base_load=300, free_primary=4.48, free_zendure=6.0, primary_power=2750, zendure_power=4800)
+
+
+def test_classify_cloudy() -> None:
+    assert _classify([800] * 16) == (Stage.CLOUDY, 1.2, 500)
+
+
+def test_classify_sunny_by_peak() -> None:
+    assert _classify([6000] * 8) == (Stage.SUNNY, 11.0, 5700)
+
+
+def test_classify_sunny_by_energy() -> None:
+    assert _classify([3000] * 40) == (Stage.SUNNY, 25.0, 2700)
+
+
+def test_classify_mixed() -> None:
+    assert _classify([3500] * 8) == (Stage.MIXED, 6.0, 3200)
+
+
+def test_classify_without_slots() -> None:
+    assert _classify([]) == (Stage.CLOUDY, 0, 0)
+
+
+def test_stage_needs_two_equal_results() -> None:
+    f = StageFilter()
+    assert f.update(Stage.SUNNY) == Stage.SUNNY
+    assert f.update(Stage.CLOUDY) == Stage.SUNNY
+    assert f.update(Stage.CLOUDY) == Stage.CLOUDY
+    assert f.update(Stage.MIXED) == Stage.CLOUDY
+    assert f.update(Stage.SUNNY) == Stage.CLOUDY
+    assert f.update(Stage.NONE) == Stage.NONE
+
+
+def test_lead() -> None:
+    assert lead_for(Stage.SUNNY, True, 15) == 100
+    assert lead_for(Stage.CLOUDY, False, 15) == 100
+    assert lead_for(Stage.SUNNY, False, 15) == 0
+    assert lead_for(Stage.MIXED, False, 15) == 15
+    assert lead_for(Stage.NONE, False, 20) == 20
+
+
+def test_load_tracker() -> None:
+    tracker = LoadTracker(timedelta(hours=24))
+    assert tracker.mean() is None and tracker.base() is None
+    for i, w in enumerate(range(100, 1001, 100)):
+        tracker.add(NOW + timedelta(minutes=i), w)
+    assert tracker.mean() == 550
+    assert tracker.base() == 200
+
+
+def test_load_tracker_drops_old_values() -> None:
+    tracker = LoadTracker(timedelta(hours=24))
+    tracker.add(NOW, 5000)
+    tracker.add(NOW + timedelta(hours=25), 100)
+    assert tracker.mean() == 100

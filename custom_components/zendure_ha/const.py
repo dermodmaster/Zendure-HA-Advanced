@@ -92,3 +92,6 @@ class SmartMode:
 
     BALANCE_HYSTERESIS = 5  # Fill level difference (percentage points) needed before the charge/discharge priority flips back
     BALANCE_HOLD = timedelta(minutes=15)  # Minimum time between two priority switches
+    FORECAST_INTERVAL = timedelta(minutes=15)  # How often the solar forecast is read and classified
+    LOAD_WINDOW = timedelta(hours=24)  # House load history used for the expected and the base load
+    LOAD_BASE_QUANTILE = 0.2  # Quantile of the house load history that counts as the base load
