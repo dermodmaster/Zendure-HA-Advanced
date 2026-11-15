@@ -13,6 +13,10 @@ CONF_PV_METER = "pv_meter"  # Meter active power (grid) of the primary PV system
 CONF_PV_BATTERY = "pv_battery"  # Battery Power of the primary PV system (neg = charging)
 CONF_PV_SOC = "pv_soc"  # State of charge of the primary battery
 CONF_PV_MAX_SOC = "pv_max_soc"  # Maximum state of charge of the primary battery (e.g. its inverter setting)
+CONF_PV_FORECAST = "pv_forecast"  # Solar forecast sensor with the attribute `watts` (optional)
+CONF_PV_CAPACITY = "pv_capacity"  # Capacity of the primary battery (kWh)
+CONF_PV_POWER = "pv_power"  # Charge/discharge power of the primary battery (W)
+CONF_PV_MIN_SOC = "pv_min_soc"  # Minimum state of charge of the primary battery (%)
 CONF_PRICE = "price"
 CONF_MQTTLOG = "mqttlog"
 CONF_MQTTLOCAL = "mqttlocal"
@@ -85,13 +89,22 @@ class SmartMode:
     SURPLUS_SETTLE_DOWN = timedelta(0)  # Back off on every fresh reading: the back-off target is absolute, it cannot wind down
     SURPLUS_DEADBAND = 15  # Minimum surplus margin (W) before adjusting the charge target
     SURPLUS_SOCFULL_MARGIN = 1  # Primary battery counts as full at its maximum SoC minus this margin (%)
-    SURPLUS_START_HYSTERESIS = 2  # Charging stops this far (%) below the start SoC of the primary battery
+    SURPLUS_HOLD = timedelta(minutes=2)  # After charging, stay in charge mode this long before covering grid import
 
-    # Charge limit of the primary battery, set by the manager in its inverter (e.g. 80 %)
-    PRIMARY_SATURATED_FEEDIN = 200  # Feed-in (W) while the Zendure charges at its maximum = it cannot take all surplus
-    PRIMARY_SATURATED_TIME = timedelta(minutes=2)  # ... for this long -> lift the limit for the rest of the day
-    PRIMARY_NIGHT_PV = 50  # Primary PV power (W) below which it is night: re-arm the limit for the next day
     PRIMARY_FULL_CHARGE_WEEKDAY = 5  # Saturday: charge the primary battery to 100 % (BMS calibration, cell balancing)
     PRIMARY_FULL_SOC = 99  # Primary SoC (%) that counts as the weekly full charge being done
-    PRIMARY_WRITE_INTERVAL = timedelta(minutes=1)  # Minimum time between two writes to the inverter
-    SURPLUS_HOLD = timedelta(minutes=2)  # After charging, stay in charge mode this long before covering grid import
+
+    BALANCE_HYSTERESIS = 5  # Fill level difference (percentage points) needed before the charge/discharge priority flips back
+    BALANCE_HOLD = timedelta(minutes=15)  # Minimum time between two priority switches
+    FORECAST_INTERVAL = timedelta(minutes=15)  # How often the solar forecast is read and classified
+    FORECAST_RETRY = timedelta(minutes=1)  # How soon the forecast is read again while there is none (the sensor may load later)
+    LOAD_WINDOW = timedelta(hours=24)  # House load history used for the expected and the base load
+    LOAD_BASE_QUANTILE = 0.2  # Quantile of the house load history that counts as the base load
+
+    PRIMARY_CAPACITY = 6.4  # Default capacity of the primary battery (kWh)
+    PRIMARY_POWER = 2750  # Default charge/discharge power of the primary battery (W)
+    PRIMARY_POWER_MARGIN = 250  # Power (W) the primary battery keeps in reserve before the Zendure takes over in primary priority
+    PRIMARY_GIVE_BACK = 100  # Most the Zendure reduces its output per reading in primary priority (W); the primary may not be able to take over
+    PRIMARY_EMPTY_FILL = 1  # Fill level (%) of the primary battery at or below which it counts as empty: the Zendure discharges first, no hold
+    PRIMARY_MIN_SOC = 5  # Default minimum SoC of the primary battery (%)
+    PRIMARY_LEAD = 15  # Default fill level lead (percentage points) of the primary battery in a mixed or unknown forecast

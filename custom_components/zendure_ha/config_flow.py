@@ -23,19 +23,29 @@ from .const import (
     CONF_MQTTUSER,
     CONF_P1METER,
     CONF_PV_BATTERY,
+    CONF_PV_CAPACITY,
     CONF_PV_DCPOWER,
+    CONF_PV_FORECAST,
     CONF_PV_LOAD,
     CONF_PV_METER,
     CONF_PV_MAX_SOC,
+    CONF_PV_MIN_SOC,
+    CONF_PV_POWER,
     CONF_PV_SOC,
     CONF_SIM,
     CONF_WIFIPSW,
     CONF_WIFISSID,
     DOMAIN,
+    SmartMode,
 )
 from .manager import ZendureConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
+
+# primary battery options: the ranges keep the balancing math sane (e.g. a power below the discharge margin, a minimum SoC of 100)
+PV_CAPACITY_VALIDATOR = vol.All(vol.Coerce(float), vol.Range(min=0.1, max=100))
+PV_POWER_VALIDATOR = vol.All(vol.Coerce(int), vol.Range(min=500, max=20000))
+PV_MIN_SOC_VALIDATOR = vol.All(vol.Coerce(int), vol.Range(min=0, max=99))
 
 
 class ZendureConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -54,6 +64,10 @@ class ZendureConfigFlow(ConfigFlow, domain=DOMAIN):
             vol.Optional(CONF_PV_BATTERY): selector.EntitySelector(),
             vol.Optional(CONF_PV_SOC): selector.EntitySelector(),
             vol.Optional(CONF_PV_MAX_SOC): selector.EntitySelector(),
+            vol.Optional(CONF_PV_FORECAST): selector.EntitySelector(),
+            vol.Optional(CONF_PV_CAPACITY, default=SmartMode.PRIMARY_CAPACITY): PV_CAPACITY_VALIDATOR,
+            vol.Optional(CONF_PV_POWER, default=SmartMode.PRIMARY_POWER): PV_POWER_VALIDATOR,
+            vol.Optional(CONF_PV_MIN_SOC, default=SmartMode.PRIMARY_MIN_SOC): PV_MIN_SOC_VALIDATOR,
             vol.Required(CONF_MQTTLOG): bool,
             vol.Required(CONF_MQTTLOCAL): bool,
         }
@@ -192,6 +206,10 @@ class ZendureOptionsFlowHandler(OptionsFlow):
                 vol.Optional(CONF_PV_BATTERY, default=data.get(CONF_PV_BATTERY, "")): str,
                 vol.Optional(CONF_PV_SOC, default=data.get(CONF_PV_SOC, "")): str,
                 vol.Optional(CONF_PV_MAX_SOC, default=data.get(CONF_PV_MAX_SOC, "")): str,
+                vol.Optional(CONF_PV_FORECAST, default=data.get(CONF_PV_FORECAST, "")): str,
+                vol.Optional(CONF_PV_CAPACITY, default=data.get(CONF_PV_CAPACITY, SmartMode.PRIMARY_CAPACITY)): PV_CAPACITY_VALIDATOR,
+                vol.Optional(CONF_PV_POWER, default=data.get(CONF_PV_POWER, SmartMode.PRIMARY_POWER)): PV_POWER_VALIDATOR,
+                vol.Optional(CONF_PV_MIN_SOC, default=data.get(CONF_PV_MIN_SOC, SmartMode.PRIMARY_MIN_SOC)): PV_MIN_SOC_VALIDATOR,
                 vol.Required(CONF_MQTTLOG, default=data[CONF_MQTTLOG]): bool,
                 vol.Optional(CONF_AUTO_MQTT_USER, default=data.get(CONF_AUTO_MQTT_USER, False)): bool,
                 vol.Optional(CONF_SIM, default=data.get(CONF_SIM, False)): bool,

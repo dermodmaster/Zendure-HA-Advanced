@@ -1,17 +1,23 @@
 """Scenario tests for ZendureManager.power_surplus (solar surplus mode).
 
 The primary PV system (hybrid inverter with a DC-coupled battery) charges its own
-battery before it feeds anything into the grid. The Zendure (AC-coupled, lower
-round-trip efficiency) must therefore only take what would otherwise be fed in,
-and must give power back as soon as it draws from the primary battery.
+battery before it feeds anything into the grid. With the primary battery first (charge
+priority "primary"), the Zendure (AC-coupled, lower round-trip efficiency) only takes what
+would otherwise be fed in, above a small reserve. With the Zendure first (charge priority
+"zendure"), it also takes the primary battery's charge power. In both cases it gives power
+back as soon as it draws from the primary battery or the grid.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
+from custom_components.zendure_ha.balance import Priority
 from custom_components.zendure_ha.manager import ZendureManager
 
 
@@ -40,7 +46,7 @@ def _harness(
     last_charge: datetime = datetime.min,
     actual: int | None = None,
     max_soc: float | None = None,
-    start_soc: float = 0,
+    priority: Priority = Priority.PRIMARY,
 ) -> ZendureManager:
     manager = object.__new__(ZendureManager)
     manager.pv_dcpower = dcpower
@@ -49,10 +55,6 @@ def _harness(
     manager.pv_battery = battery
     manager.pv_soc = soc
     manager.pv_max_soc = max_soc
-    manager.surplus_start_soc = SimpleNamespace(asNumber=start_soc)
-    manager.surplus_released = False
-    manager.surplus_saturated_since = None
-    manager.primary_limit_lifted = False
     manager.surplus_charge = charge
     manager.surplus_dirty = True
     manager.surplus_next = datetime.min
@@ -68,6 +70,7 @@ def _harness(
     taken = charge if actual is None else actual
     # device input when the latest primary/grid readings arrived
     manager.surplus_seen_input = taken
+    manager.charge_hold = SimpleNamespace(value=priority)
     manager.devices = [
         SimpleNamespace(charge_limit=-2400, homeInput=SimpleNamespace(asInt=taken // 2)),
         SimpleNamespace(charge_limit=-2400, homeInput=SimpleNamespace(asInt=taken - taken // 2)),
@@ -193,6 +196,15 @@ async def test_back_off_starts_from_what_the_devices_take() -> None:
     assert manager.surplus_charge == 2500
 
 
+async def test_back_off_uses_the_device_input_now_when_the_report_lagged() -> None:
+    # 2026-11-13 13:40:06: Keller still reported 53 W when the import of ~700 W was measured, but already
+    # took 1411 W; cutting from 53 W set the target to 0
+    manager = _harness(charge=1411, dcpower=1175, load=2600, battery=0, soc=100, meter=700, actual=1411)
+    manager.surplus_seen_input = 53
+    await _run(manager, p1=700)
+    assert manager.surplus_charge == 1411 - 700
+
+
 async def test_repeated_readings_of_one_state_do_not_cut_again() -> None:
     manager = _harness(charge=4800, dcpower=8000, load=9200, battery=1143, soc=100, actual=4763)
     now = datetime.now()
@@ -205,12 +217,14 @@ async def test_repeated_readings_of_one_state_do_not_cut_again() -> None:
 
 
 async def test_observed_back_off_sequence_does_not_wind_down_to_zero() -> None:
-    # 2026-11-13 12:37:55-12:38:04: (primary battery discharge, device input when it was measured)
+    # 2026-11-13 12:37:55-12:38:04: (primary battery discharge, device input when it was measured, device input now)
     manager = _harness(charge=4800, dcpower=8000, load=9200, battery=0, soc=100)
     now = datetime.now()
-    for i, (battery, seen) in enumerate([(1143, 4763), (2156, 4464), (1533, 4464)]):
+    for i, (battery, seen, now_input) in enumerate([(1143, 4763, 4763), (2156, 4464, 4464), (1533, 4464, 1899)]):
         manager.pv_battery = battery
         manager.surplus_seen_input = seen
+        manager.devices[0].homeInput.asInt = now_input // 2
+        manager.devices[1].homeInput.asInt = now_input - now_input // 2
         manager.surplus_dirty = True
         await ZendureManager.power_surplus(manager, 0, now + timedelta(seconds=3 * i))
     assert manager.surplus_charge == 4464 - 2156
@@ -249,57 +263,32 @@ async def test_primary_at_90_is_not_full_without_max_soc() -> None:
     assert manager.surplusPrimaryFull.last == 0
 
 
-async def test_no_charging_below_the_start_soc() -> None:
-    # primary battery at 40 % charges at its limit and 800 W are fed in, but the start is set to 50 %
-    manager = _harness(charge=0, dcpower=6000, load=2200, battery=-2700, soc=40, start_soc=50)
-    await _run(manager, p1=-800)
-    assert manager.surplus_charge == 0
-    assert manager.charge_calls == [0]
-
-
-async def test_charging_starts_at_the_start_soc() -> None:
-    manager = _harness(charge=0, dcpower=6000, load=2200, battery=-2700, soc=50, start_soc=50)
-    await _run(manager, p1=-800)
-    assert manager.surplus_charge == 750
-
-
-async def test_start_soc_has_a_hysteresis() -> None:
-    manager = _harness(charge=1000, dcpower=6000, load=2200, battery=-2700, soc=50, start_soc=50)
-    await _run(manager, p1=-60)
-    assert manager.surplus_charge == 1000
-    manager.pv_soc = 48.5
-    manager.surplus_dirty = True
-    await _run(manager, p1=-60)
-    assert manager.surplus_charge == 1000
-    manager.pv_soc = 47.9
-    manager.surplus_dirty = True
-    await _run(manager, p1=-60)
-    assert manager.surplus_charge == 0
-
-
-async def test_start_soc_above_max_soc_still_starts_when_full() -> None:
-    manager = _harness(charge=0, dcpower=3000, load=3000, battery=0, soc=89.5, max_soc=90, start_soc=95)
+async def test_zendure_first_takes_the_primary_charge_power() -> None:
+    manager = _harness(charge=1000, dcpower=5000, load=1000, battery=-2000, soc=60, priority=Priority.ZENDURE)
     await _run(manager, p1=0)
-    assert manager.surplus_charge == 100
+    assert manager.surplus_charge == 1000 + 2000 - 50
 
 
-async def test_limit_is_lifted_when_the_zendure_cannot_take_all_surplus() -> None:
-    # primary battery at its 80 % limit, Zendure at its 4800 W maximum and still 500 W fed in for 2 minutes
-    manager = _harness(charge=4800, dcpower=9000, load=8500, battery=0, soc=80, max_soc=80)
-    now = datetime.now()
-    await ZendureManager.power_surplus(manager, -500, now)
-    assert manager.primary_limit_lifted is False
-    manager.surplus_dirty = True
-    await ZendureManager.power_surplus(manager, -500, now + timedelta(seconds=130))
-    assert manager.primary_limit_lifted is True
+async def test_primary_first_ignores_the_primary_charge_power() -> None:
+    manager = _harness(charge=1000, dcpower=5000, load=1000, battery=-2000, soc=60, priority=Priority.PRIMARY)
+    await _run(manager, p1=0)
+    assert manager.surplus_charge == 1000 - 50 - 100
 
 
-async def test_short_saturation_does_not_lift_the_limit() -> None:
-    manager = _harness(charge=4800, dcpower=9000, load=8500, battery=0, soc=80, max_soc=80)
-    now = datetime.now()
-    await ZendureManager.power_surplus(manager, -500, now)
-    manager.surplus_dirty = True
-    await ZendureManager.power_surplus(manager, 0, now + timedelta(seconds=60))
-    manager.surplus_dirty = True
-    await ZendureManager.power_surplus(manager, -500, now + timedelta(seconds=130))
-    assert manager.primary_limit_lifted is False
+async def test_zendure_first_holds_inside_the_reserve() -> None:
+    manager = _harness(charge=1000, dcpower=2000, load=1000, battery=-40, soc=60, priority=Priority.ZENDURE)
+    await _run(manager, p1=0)
+    assert manager.surplus_charge == 1000
+
+
+async def test_zendure_first_backs_off_when_the_primary_discharges() -> None:
+    manager = _harness(charge=2000, dcpower=2000, load=2300, battery=300, soc=60, priority=Priority.ZENDURE)
+    await _run(manager, p1=0)
+    assert manager.surplus_charge == 1700
+
+
+async def test_surplus_log_line_names_the_priority_and_the_available_power(caplog: pytest.LogCaptureFixture) -> None:
+    manager = _harness(charge=1000, dcpower=5000, load=1000, battery=-2000, soc=60, priority=Priority.ZENDURE)
+    with caplog.at_level(logging.INFO, logger="custom_components.zendure_ha.manager"):
+        await _run(manager, p1=0)
+    assert any("available:2000W priority:zendure" in record.getMessage() for record in caplog.records)

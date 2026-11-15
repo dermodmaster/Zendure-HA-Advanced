@@ -24,6 +24,10 @@
           "pv_battery": "Primär-PV: Sensor Akkuleistung (optional)",
           "pv_soc": "Primär-PV: Sensor Akku-Ladestand (optional)",
           "pv_max_soc": "Primär-PV: Max-Ladestand des Akkus, z. B. Wechselrichter-Einstellung (optional)",
+          "pv_forecast": "Primär-PV: Prognose-Sensor mit Attribut watts (optional)",
+          "pv_capacity": "Primär-PV: Akkukapazität (kWh)",
+          "pv_power": "Primär-PV: Lade-/Entladeleistung des Akkus (W)",
+          "pv_min_soc": "Primär-PV: Minimaler Ladestand (%)",
           "mqttlog": "MQTT-Kommunikation loggen",
           "mqttlocal": "Lokales MQTT verwenden",
           "auto_mqtt_user": "MQTT-Benutzer automatisch verwalten",
@@ -41,6 +45,10 @@
           "pv_battery": "Primär-PV: Sensor Akkuleistung (optional)",
           "pv_soc": "Primär-PV: Sensor Akku-Ladestand (optional)",
           "pv_max_soc": "Primär-PV: Max-Ladestand des Akkus, z. B. Wechselrichter-Einstellung (optional)",
+          "pv_forecast": "Primär-PV: Prognose-Sensor mit Attribut watts (optional)",
+          "pv_capacity": "Primär-PV: Akkukapazität (kWh)",
+          "pv_power": "Primär-PV: Lade-/Entladeleistung des Akkus (W)",
+          "pv_min_soc": "Primär-PV: Minimaler Ladestand (%)",
           "mqttlog": "MQTT-Kommunikation loggen",
           "mqttlocal": "Lokales MQTT verwenden",
           "auto_mqtt_user": "MQTT-Benutzer automatisch verwalten",
@@ -61,6 +69,10 @@
           "pv_battery": "Primär-PV: Sensor Akkuleistung (optional)",
           "pv_soc": "Primär-PV: Sensor Akku-Ladestand (optional)",
           "pv_max_soc": "Primär-PV: Max-Ladestand des Akkus, z. B. Wechselrichter-Einstellung (optional)",
+          "pv_forecast": "Primär-PV: Prognose-Sensor mit Attribut watts (optional)",
+          "pv_capacity": "Primär-PV: Akkukapazität (kWh)",
+          "pv_power": "Primär-PV: Lade-/Entladeleistung des Akkus (W)",
+          "pv_min_soc": "Primär-PV: Minimaler Ladestand (%)",
           "mqttlog": "MQTT-Kommunikation loggen",
           "auto_mqtt_user": "MQTT-Benutzer automatisch verwalten"
         },
@@ -126,11 +138,8 @@
       "surplus_probe": {
         "name": "Solar-Überschuss Probing-Schritt"
       },
-      "surplus_start_soc": {
-        "name": "Solar-Überschuss Start ab Primär-Ladestand"
-      },
-      "primary_limit": {
-        "name": "Primär-Akku Ladegrenze"
+      "primary_lead": {
+        "name": "Vorsprung Primärakku"
       },
       "min_soc": {
         "name": "SoC-Minimum"
@@ -157,6 +166,47 @@
       },
       "surplus_eff_offset": {
         "name": "Effektive Einspeise-Reserve"
+      },
+      "forecast_stage": {
+        "name": "Prognose-Stufe",
+        "state": {
+          "cloudy": "Trüb",
+          "mixed": "Gemischt",
+          "sunny": "Sonnig",
+          "none": "Keine"
+        }
+      },
+      "forecast_surplus": {
+        "name": "Prognose Überschuss"
+      },
+      "forecast_peak": {
+        "name": "Prognose Spitze"
+      },
+      "primary_lead_active": {
+        "name": "Vorsprung Primärakku aktiv"
+      },
+      "primary_fill": {
+        "name": "Füllstand Primärakku"
+      },
+      "zendure_fill": {
+        "name": "Füllstand Zendure"
+      },
+      "charge_priority": {
+        "name": "Laden zuerst",
+        "state": {
+          "primary": "Primärakku",
+          "zendure": "Zendure"
+        }
+      },
+      "discharge_priority": {
+        "name": "Entladen zuerst",
+        "state": {
+          "primary": "Primärakku",
+          "zendure": "Zendure"
+        }
+      },
+      "primary_last_full_charge": {
+        "name": "Letzte Vollladung Primärakku"
       },
       "pv_dcpower": {
         "name": "Primär-PV Gesamt-DC-Leistung"

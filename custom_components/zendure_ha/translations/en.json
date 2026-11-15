@@ -24,6 +24,10 @@
           "pv_battery": "Primary PV: Battery Power sensor (optional)",
           "pv_soc": "Primary PV: Battery state of charge sensor (optional)",
           "pv_max_soc": "Primary PV: Battery maximum state of charge, e.g. the inverter setting (optional)",
+          "pv_forecast": "Primary PV: Solar forecast sensor with attribute watts (optional)",
+          "pv_capacity": "Primary PV: Battery capacity (kWh)",
+          "pv_power": "Primary PV: Battery charge/discharge power (W)",
+          "pv_min_soc": "Primary PV: Battery minimum SoC (%)",
           "mqttlog": "Log MQTT communication",
           "mqttlocal": "Use local MQTT",
           "auto_mqtt_user": "Automatically manage MQTT users",
@@ -52,6 +56,10 @@
           "pv_battery": "Primary PV: Battery Power sensor (optional)",
           "pv_soc": "Primary PV: Battery state of charge sensor (optional)",
           "pv_max_soc": "Primary PV: Battery maximum state of charge, e.g. the inverter setting (optional)",
+          "pv_forecast": "Primary PV: Solar forecast sensor with attribute watts (optional)",
+          "pv_capacity": "Primary PV: Battery capacity (kWh)",
+          "pv_power": "Primary PV: Battery charge/discharge power (W)",
+          "pv_min_soc": "Primary PV: Battery minimum SoC (%)",
           "mqttlog": "Log MQTT communication",
           "mqttlocal": "Use local MQTT",
           "auto_mqtt_user": "Automatically manage MQTT users",
@@ -72,6 +80,10 @@
           "pv_battery": "Primary PV: Battery Power sensor (optional)",
           "pv_soc": "Primary PV: Battery state of charge sensor (optional)",
           "pv_max_soc": "Primary PV: Battery maximum state of charge, e.g. the inverter setting (optional)",
+          "pv_forecast": "Primary PV: Solar forecast sensor with attribute watts (optional)",
+          "pv_capacity": "Primary PV: Battery capacity (kWh)",
+          "pv_power": "Primary PV: Battery charge/discharge power (W)",
+          "pv_min_soc": "Primary PV: Battery minimum SoC (%)",
           "mqttlog": "Log MQTT communication",
           "auto_mqtt_user": "Automatically manage MQTT users"
         },
@@ -137,11 +149,8 @@
       "surplus_probe": {
         "name": "Solar Surplus Probing Step"
       },
-      "surplus_start_soc": {
-        "name": "Solar Surplus Start at Primary SoC"
-      },
-      "primary_limit": {
-        "name": "Primary Battery Charge Limit"
+      "primary_lead": {
+        "name": "Primary Battery Lead"
       },
       "min_soc": {
         "name": "SoC Minimum"
@@ -168,6 +177,47 @@
       },
       "surplus_eff_offset": {
         "name": "Solar Surplus Effective Feed-in Reserve"
+      },
+      "forecast_stage": {
+        "name": "Forecast Stage",
+        "state": {
+          "cloudy": "Cloudy",
+          "mixed": "Mixed",
+          "sunny": "Sunny",
+          "none": "None"
+        }
+      },
+      "forecast_surplus": {
+        "name": "Forecast Surplus"
+      },
+      "forecast_peak": {
+        "name": "Forecast Peak"
+      },
+      "primary_lead_active": {
+        "name": "Primary Battery Lead Active"
+      },
+      "primary_fill": {
+        "name": "Primary Battery Fill"
+      },
+      "zendure_fill": {
+        "name": "Zendure Fill"
+      },
+      "charge_priority": {
+        "name": "Charge Priority",
+        "state": {
+          "primary": "Primary",
+          "zendure": "Zendure"
+        }
+      },
+      "discharge_priority": {
+        "name": "Discharge Priority",
+        "state": {
+          "primary": "Primary",
+          "zendure": "Zendure"
+        }
+      },
+      "primary_last_full_charge": {
+        "name": "Primary Battery Last Full Charge"
       },
       "pv_dcpower": {
         "name": "Primary PV Total DC Power"
