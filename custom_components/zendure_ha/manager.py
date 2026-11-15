@@ -998,6 +998,9 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             eff_offset = 0 if primary_full else int(self.surplus_offset.asNumber)
             # grid meter: positive = import, negative = feed-in
             feed_in = max(0, -p1)
+            # when the Zendure charges first, the primary battery's charge power is also available to it
+            charging = max(0, -int(self.pv_battery or 0)) if self.charge_hold.value == Priority.ZENDURE else 0
+            available = feed_in + charging
 
             # feedback that we took too much: the primary battery discharging (neg = charging) plus grid import
             overshoot = max(0, int(self.pv_battery or 0)) + max(0, p1)
@@ -1014,14 +1017,17 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             elif primary_full:
                 # primary battery full and not loaded -> probe upward to harvest the curtailed surplus
                 step = max(margin - eff_offset, int(self.surplus_probe.asNumber))
-            elif feed_in >= eff_offset + SmartMode.SURPLUS_DEADBAND:
+            elif available >= eff_offset + SmartMode.SURPLUS_DEADBAND:
                 # primary battery charges at its limit and the rest is fed in -> take the feed-in above the reserve
-                step = feed_in - eff_offset
-            elif feed_in > 0:
-                # feed-in inside the band: hold; below the reserve: give back proportionally
-                step = min(0, feed_in - eff_offset)
+                # (plus, when the Zendure charges first, the primary battery's charge power)
+                step = available - eff_offset
+            elif available > 0:
+                # feed-in (plus primary charge power when the Zendure goes first) inside the band: hold;
+                # below the reserve: give back proportionally
+                step = min(0, available - eff_offset)
             else:
-                # no feed-in at all: the Zendure may be drawing from the primary battery -> give power back.
+                # no feed-in and no primary charge power to take: the Zendure may be drawing from the primary
+                # battery -> give power back.
                 # DC - Load is not used here, it contains the inverter losses and would ramp the Zendure up.
                 step = -eff_offset - int(self.surplus_probe.asNumber)
 

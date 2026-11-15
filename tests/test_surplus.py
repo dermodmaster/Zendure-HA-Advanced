@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
+from custom_components.zendure_ha.balance import Priority
 from custom_components.zendure_ha.manager import ZendureManager
 
 
@@ -40,6 +41,7 @@ def _harness(
     last_charge: datetime = datetime.min,
     actual: int | None = None,
     max_soc: float | None = None,
+    priority: Priority = Priority.PRIMARY,
 ) -> ZendureManager:
     manager = object.__new__(ZendureManager)
     manager.pv_dcpower = dcpower
@@ -63,6 +65,7 @@ def _harness(
     taken = charge if actual is None else actual
     # device input when the latest primary/grid readings arrived
     manager.surplus_seen_input = taken
+    manager.charge_hold = SimpleNamespace(value=priority)
     manager.devices = [
         SimpleNamespace(charge_limit=-2400, homeInput=SimpleNamespace(asInt=taken // 2)),
         SimpleNamespace(charge_limit=-2400, homeInput=SimpleNamespace(asInt=taken - taken // 2)),
@@ -253,3 +256,27 @@ async def test_primary_at_90_is_not_full_without_max_soc() -> None:
     manager = _harness(charge=500, dcpower=3000, load=3000, battery=0, soc=90)
     await _run(manager, p1=0)
     assert manager.surplusPrimaryFull.last == 0
+
+
+async def test_zendure_first_takes_the_primary_charge_power() -> None:
+    manager = _harness(charge=1000, dcpower=5000, load=1000, battery=-2000, soc=60, priority=Priority.ZENDURE)
+    await _run(manager, p1=0)
+    assert manager.surplus_charge == 1000 + 2000 - 50
+
+
+async def test_primary_first_ignores_the_primary_charge_power() -> None:
+    manager = _harness(charge=1000, dcpower=5000, load=1000, battery=-2000, soc=60, priority=Priority.PRIMARY)
+    await _run(manager, p1=0)
+    assert manager.surplus_charge == 1000 - 50 - 100
+
+
+async def test_zendure_first_holds_inside_the_reserve() -> None:
+    manager = _harness(charge=1000, dcpower=2000, load=1000, battery=-40, soc=60, priority=Priority.ZENDURE)
+    await _run(manager, p1=0)
+    assert manager.surplus_charge == 1000
+
+
+async def test_zendure_first_backs_off_when_the_primary_discharges() -> None:
+    manager = _harness(charge=2000, dcpower=2000, load=2300, battery=300, soc=60, priority=Priority.ZENDURE)
+    await _run(manager, p1=0)
+    assert manager.surplus_charge == 1700
