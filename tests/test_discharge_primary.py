@@ -51,7 +51,7 @@ class _DischargingDevice:
         return True
 
 
-def _harness(*, output: int, battery: float | None, priority: Priority = Priority.ZENDURE) -> ZendureManager:
+def _harness(*, output: int, battery: float | None, priority: Priority = Priority.ZENDURE, primary_power: int = 2750) -> ZendureManager:
     manager = object.__new__(ZendureManager)
     manager.operation = ManagerMode.MATCHING_DISCHARGE
     manager.devices = [_DischargingDevice(output)]
@@ -75,7 +75,7 @@ def _harness(*, output: int, battery: float | None, priority: Priority = Priorit
     manager.globalSoc = _RecordingSensor()
     manager.discharge_calls = []
     manager.discharge_hold = SimpleNamespace(value=priority)
-    manager.primary_power = 2750
+    manager.primary_power = primary_power
 
     async def power_discharge(setpoint: int) -> None:
         manager.discharge_calls.append(setpoint)
@@ -122,8 +122,42 @@ async def test_without_primary_battery_sensor_behaviour_is_unchanged() -> None:
 
 
 async def test_primary_covers_a_small_load() -> None:
-    manager = _harness(output=300, battery=400, priority=Priority.PRIMARY)
-    assert await _run(manager, p1=0) == 0
+    # house load 700 W; the primary battery regulates the meter to zero, so it covers what the Zendure does not
+    load, zendure = 700, 300
+    outputs = [zendure]
+    for _ in range(5):
+        manager = _harness(output=zendure, battery=load - zendure, priority=Priority.PRIMARY)
+        zendure = await _run(manager, p1=0)
+        outputs.append(zendure)
+    assert zendure == 0
+    assert all(later <= earlier for earlier, later in zip(outputs, outputs[1:], strict=False))
+
+
+async def test_primary_that_cannot_deliver_leaves_little_grid_import() -> None:
+    # the primary battery is capped at 2000 W, the load is 3000 W: the Zendure must not give back what the primary cannot supply
+    load, cap, zendure = 3000, 2000, 0
+    p1 = 0
+    for _ in range(15):
+        battery = min(cap, load - zendure)
+        p1 = load - zendure - battery
+        manager = _harness(output=zendure, battery=battery, priority=Priority.PRIMARY)
+        zendure = await _run(manager, p1=p1)
+    assert p1 <= 100
+
+
+async def test_primary_being_charged_makes_the_zendure_back_off_faster() -> None:
+    # primary battery charging 600 W under primary priority: half of that plus the give-back bound in one reading
+    manager = _harness(output=1300, battery=-600, priority=Priority.PRIMARY)
+    assert await _run(manager, p1=0) == 1300 - 300 - 100
+
+
+async def test_small_primary_power_does_not_make_the_zendure_charge_the_primary() -> None:
+    # primary power below the margin: the threshold is 0, not negative, so the Zendure never exceeds the load
+    load, zendure = 500, 0
+    for _ in range(30):
+        manager = _harness(output=zendure, battery=load - zendure, priority=Priority.PRIMARY, primary_power=200)
+        zendure = await _run(manager, p1=0)
+        assert zendure <= load
 
 
 async def test_zendure_covers_what_exceeds_the_primary_power() -> None:

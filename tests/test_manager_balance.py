@@ -169,6 +169,20 @@ def test_full_charge_is_recorded_at_99() -> None:
     assert m.lastFullCharge.native_value == NOW
 
 
+def test_full_charge_is_recorded_at_the_maximum_soc_when_that_is_below_99() -> None:
+    # primary battery limited to 90 %: its full counts one point below that, like the surplus mode
+    due = datetime(2026, 11, 13, 15, 0, tzinfo=BER)
+    m = _harness(pv_soc=89.5, zendure_soc=10, watts=_watts(6000, 8), pv_load=500, last_full=due)
+    m.pv_max_soc = 90
+    ZendureManager.update_balance(m, NOW)
+    assert m.lastFullCharge.native_value == NOW
+
+    m = _harness(pv_soc=88.5, zendure_soc=10, watts=_watts(6000, 8), pv_load=500, last_full=due)
+    m.pv_max_soc = 90
+    ZendureManager.update_balance(m, NOW)
+    assert m.lastFullCharge.native_value == due
+
+
 def test_first_start_counts_as_done() -> None:
     m = _harness(pv_soc=50, zendure_soc=40, watts=_watts(6000, 8), pv_load=500, last_full=None)
     ZendureManager.update_balance(m, NOW)
@@ -199,6 +213,19 @@ def test_all_zendures_offline_falls_back_to_today() -> None:
     assert m.dischargePriority.last == "zendure"
 
 
+def test_empty_primary_battery_hands_the_discharge_to_the_zendure_at_once() -> None:
+    # primary battery at its minimum SoC (fill 0), Zendure at fill 3: no hysteresis would switch, but there is nothing to cover the load with
+    m = _harness(pv_soc=5, zendure_soc=12.4, watts=_watts(6000, 8), pv_load=500)
+    m.discharge_hold.update(Priority.PRIMARY, NOW - timedelta(minutes=1))  # just switched, the hold is running
+    assert m.discharge_hold.value == Priority.PRIMARY
+    ZendureManager.update_balance(m, NOW)
+    assert m.primaryFill.last == 0
+    assert m.zendureFill.last == 3
+    assert m.dischargePriority.last == "zendure"
+    # the charge priority is not affected
+    assert m.chargePriority.last == "primary"
+
+
 def test_online_zendure_without_soc_falls_back_to_today() -> None:
     m = _harness(pv_soc=80, zendure_soc=10, watts=_watts(6000, 8), pv_load=500)
     m.devices[0].electricLevel = _no_value()
@@ -213,6 +240,21 @@ def test_house_load_excludes_the_zendure() -> None:
     m.devices[0].homeInput = _v(1500)
     ZendureManager.update_balance(m, NOW)
     assert m.load_tracker.mean() == 500
+
+
+def test_house_load_ignores_offline_devices() -> None:
+    m = _harness(pv_soc=50, zendure_soc=40, watts=_watts(800, 16), pv_load=2000)
+    m.devices[0].homeInput = _v(1500)
+    m.devices.append(SimpleNamespace(online=False, homeInput=_v(1000), homeOutput=_v(300)))
+    ZendureManager.update_balance(m, NOW)
+    assert m.load_tracker.mean() == 500
+
+
+def test_house_load_is_never_negative() -> None:
+    m = _harness(pv_soc=50, zendure_soc=40, watts=_watts(800, 16), pv_load=500)
+    m.devices[0].homeInput = _v(1500)
+    ZendureManager.update_balance(m, NOW)
+    assert m.load_tracker.mean() == 0
 
 
 def test_house_load_that_is_not_a_number_is_not_tracked() -> None:
@@ -231,6 +273,19 @@ def test_stage_is_recomputed_only_every_15_minutes() -> None:
     ZendureManager.update_balance(m, NOW + timedelta(minutes=10))
     assert m.forecastStage.last == "sunny"
     assert m.forecast_next == NOW + SmartMode.FORECAST_INTERVAL
+
+
+def test_missing_forecast_is_retried_after_a_minute() -> None:
+    # the forecast entity may load after this integration: do not wait a whole interval for it
+    m = _harness(pv_soc=50, zendure_soc=40, watts=None, pv_load=500)
+    ZendureManager.update_balance(m, NOW)
+    assert m.forecastStage.last == "none"
+    assert m.forecast_next == NOW + timedelta(minutes=1)
+
+    m.forecast_watts = _watts(6000, 8)
+    ZendureManager.update_balance(m, NOW + timedelta(minutes=1))
+    assert m.forecastStage.last == "sunny"
+    assert m.forecast_next == NOW + timedelta(minutes=1) + SmartMode.FORECAST_INTERVAL
 
 
 def test_fill_levels_are_published_as_whole_percent() -> None:

@@ -1,16 +1,21 @@
 """Scenario tests for ZendureManager.power_surplus (solar surplus mode).
 
 The primary PV system (hybrid inverter with a DC-coupled battery) charges its own
-battery before it feeds anything into the grid. The Zendure (AC-coupled, lower
-round-trip efficiency) must therefore only take what would otherwise be fed in,
-and must give power back as soon as it draws from the primary battery.
+battery before it feeds anything into the grid. With the primary battery first (charge
+priority "primary"), the Zendure (AC-coupled, lower round-trip efficiency) only takes what
+would otherwise be fed in, above a small reserve. With the Zendure first (charge priority
+"zendure"), it also takes the primary battery's charge power. In both cases it gives power
+back as soon as it draws from the primary battery or the grid.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
+
+import pytest
 
 from custom_components.zendure_ha.balance import Priority
 from custom_components.zendure_ha.manager import ZendureManager
@@ -280,3 +285,10 @@ async def test_zendure_first_backs_off_when_the_primary_discharges() -> None:
     manager = _harness(charge=2000, dcpower=2000, load=2300, battery=300, soc=60, priority=Priority.ZENDURE)
     await _run(manager, p1=0)
     assert manager.surplus_charge == 1700
+
+
+async def test_surplus_log_line_names_the_priority_and_the_available_power(caplog: pytest.LogCaptureFixture) -> None:
+    manager = _harness(charge=1000, dcpower=5000, load=1000, battery=-2000, soc=60, priority=Priority.ZENDURE)
+    with caplog.at_level(logging.INFO, logger="custom_components.zendure_ha.manager"):
+        await _run(manager, p1=0)
+    assert any("available:2000W priority:zendure" in record.getMessage() for record in caplog.records)

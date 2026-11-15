@@ -97,11 +97,14 @@ class SmartMode:
     BALANCE_HYSTERESIS = 5  # Fill level difference (percentage points) needed before the charge/discharge priority flips back
     BALANCE_HOLD = timedelta(minutes=15)  # Minimum time between two priority switches
     FORECAST_INTERVAL = timedelta(minutes=15)  # How often the solar forecast is read and classified
+    FORECAST_RETRY = timedelta(minutes=1)  # How soon the forecast is read again while there is none (the sensor may load later)
     LOAD_WINDOW = timedelta(hours=24)  # House load history used for the expected and the base load
     LOAD_BASE_QUANTILE = 0.2  # Quantile of the house load history that counts as the base load
 
     PRIMARY_CAPACITY = 6.4  # Default capacity of the primary battery (kWh)
     PRIMARY_POWER = 2750  # Default charge/discharge power of the primary battery (W)
     PRIMARY_POWER_MARGIN = 250  # Power (W) the primary battery keeps in reserve before the Zendure takes over in primary priority
+    PRIMARY_GIVE_BACK = 100  # Most the Zendure reduces its output per reading in primary priority (W); the primary may not be able to take over
+    PRIMARY_EMPTY_FILL = 1  # Fill level (%) of the primary battery at or below which it counts as empty: the Zendure discharges first, no hold
     PRIMARY_MIN_SOC = 5  # Default minimum SoC of the primary battery (%)
     PRIMARY_LEAD = 15  # Default fill level lead (percentage points) of the primary battery in a mixed or unknown forecast
