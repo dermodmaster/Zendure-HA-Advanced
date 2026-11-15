@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import traceback
 from collections import deque
 from collections.abc import Callable
@@ -23,17 +24,38 @@ from homeassistant.core import Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.loader import async_get_integration
+from homeassistant.util import dt as dt_util
 
 from .api import Api
+from .balance import (
+    LoadTracker,
+    Pack,
+    Priority,
+    PriorityHold,
+    Stage,
+    StageFilter,
+    charge_choice,
+    classify,
+    discharge_choice,
+    fill_level,
+    forecast_slots,
+    full_charge_due,
+    lead_for,
+    zendure_fill,
+)
 from .binary_sensor import ZendureBinarySensor
 from .const import (
     CONF_AUTO_MQTT_USER,
     CONF_P1METER,
     CONF_PV_BATTERY,
+    CONF_PV_CAPACITY,
     CONF_PV_DCPOWER,
+    CONF_PV_FORECAST,
     CONF_PV_LOAD,
     CONF_PV_METER,
     CONF_PV_MAX_SOC,
+    CONF_PV_MIN_SOC,
+    CONF_PV_POWER,
     CONF_PV_SOC,
     DOMAIN,
     DeviceState,
@@ -46,7 +68,7 @@ from .entity import EntityDevice
 from .fusegroup import FuseGroup
 from .number import ZendureRestoreNumber
 from .select import ZendureRestoreSelect, ZendureSelect
-from .sensor import ZendureSensor
+from .sensor import ZendureRestoreSensor, ZendureSensor
 from .switch import ZendureSwitch
 
 SCAN_INTERVAL = timedelta(seconds=60)
@@ -54,6 +76,15 @@ SCAN_INTERVAL = timedelta(seconds=60)
 _LOGGER = logging.getLogger(__name__)
 
 type ZendureConfigEntry = ConfigEntry[ZendureManager]
+
+
+def _number_option(data: dict[str, Any], key: str, default: float) -> float:
+    """Read a number from the config data; empty or invalid values give the default."""
+    try:
+        value = float(data.get(key))
+    except (TypeError, ValueError):
+        return default
+    return value if math.isfinite(value) else default
 
 
 class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
@@ -96,6 +127,17 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.surplus_seen_input = 0
         self.surplus_dirty = False
 
+        # Battery balance: which battery system (primary battery or Zendure devices) charges and discharges first
+        self.pv_forecast_entity: str | None = None
+        self.primary_capacity: float = SmartMode.PRIMARY_CAPACITY
+        self.primary_power: float = SmartMode.PRIMARY_POWER
+        self.primary_min_soc: float = SmartMode.PRIMARY_MIN_SOC
+        self.charge_hold = PriorityHold(Priority.PRIMARY, SmartMode.BALANCE_HOLD)
+        self.discharge_hold = PriorityHold(Priority.ZENDURE, SmartMode.BALANCE_HOLD)
+        self.stage_filter = StageFilter()
+        self.load_tracker = LoadTracker(SmartMode.LOAD_WINDOW)
+        self.forecast_next: datetime | None = None
+
         self.charge: list[ZendureDevice] = []
         self.charge_limit = 0
         self.charge_optimal = 0
@@ -137,6 +179,9 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         # probing step for the solar surplus mode (0 = disabled); seed a sensible default on first start
         self.surplus_probe = ZendureRestoreNumber(self, "surplus_probe", None, None, "W", "power", 2000, 0, NumberMode.BOX, True)
         self.surplus_probe._attr_native_value = 100  # noqa: SLF001
+        # fill level lead (%) of the primary battery in a mixed or unknown forecast; seed a default on first start
+        self.primaryLead = ZendureRestoreNumber(self, "primary_lead", None, None, "%", None, 100, 0, NumberMode.BOX, True)
+        self.primaryLead._attr_native_value = SmartMode.PRIMARY_LEAD  # noqa: SLF001
 
         # Automation status + master switch (charge/discharge control on/off)
         self.automationActive = ZendureBinarySensor(self, "automation_active", None, "running")
@@ -147,6 +192,18 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         self.surplusMargin = ZendureSensor(self, "surplus_margin", None, "W", "power", "measurement", 0)
         self.surplusEffOffset = ZendureSensor(self, "surplus_eff_offset", None, "W", "power", "measurement", 0)
         self.surplusPrimaryFull = ZendureBinarySensor(self, "surplus_primary_full", None, None)
+
+        # Battery balance diagnostics
+        self.forecastStage = ZendureSensor(self, "forecast_stage")
+        self.forecastSurplus = ZendureSensor(self, "forecast_surplus", None, "kWh", "energy", None, 1)
+        self.forecastPeak = ZendureSensor(self, "forecast_peak", None, "W", "power", "measurement", 0)
+        self.primaryLeadActive = ZendureSensor(self, "primary_lead_active", None, "%", None, "measurement", 0)
+        self.primaryFill = ZendureSensor(self, "primary_fill", None, "%", None, "measurement", 0)
+        self.zendureFill = ZendureSensor(self, "zendure_fill", None, "%", None, "measurement", 0)
+        self.chargePriority = ZendureSensor(self, "charge_priority")
+        self.dischargePriority = ZendureSensor(self, "discharge_priority")
+        self.lastFullCharge = ZendureRestoreSensor(self, "primary_last_full_charge", None, None, "timestamp")
+
         self.availableKwh = ZendureSensor(self, "available_kwh", None, "kWh", "energy_storage", None, 1)
         self.totalKwh = ZendureSensor(self, "total_kwh", None, "kWh", "energy_storage", "measurement", 2)
         self.power = ZendureSensor(self, "power", None, "W", "power", "measurement", 0)
@@ -390,6 +447,11 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             device.setStatus()
         self.update_count += 1
         self.totalKwh.update_value(kwh)
+        try:
+            self.update_balance(dt_util.now())
+        except Exception as err:
+            _LOGGER.error("Unable to update the battery balance: %s", err)
+            _LOGGER.error(traceback.format_exc())
 
         # Manually update the timer
         if self.hass and self.hass.loop.is_running():
@@ -413,6 +475,13 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         for unsub in self.pvEvents:
             unsub()
         self.pvEvents = []
+
+        # battery balance options; empty or invalid values give the defaults
+        self.pv_forecast_entity = data.get(CONF_PV_FORECAST) or None
+        self.primary_capacity = _number_option(data, CONF_PV_CAPACITY, SmartMode.PRIMARY_CAPACITY)
+        self.primary_power = _number_option(data, CONF_PV_POWER, SmartMode.PRIMARY_POWER)
+        self.primary_min_soc = _number_option(data, CONF_PV_MIN_SOC, SmartMode.PRIMARY_MIN_SOC)
+        self.forecast_next = None  # classify the forecast again with the new options
 
         # units used to mirror each configured PV sensor as an integration sensor
         pv_units = {
@@ -454,6 +523,66 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         if self.pv_entities:
             _LOGGER.debug("Tracking primary PV sensors: %s", self.pv_entities)
             self.pvEvents.append(async_track_state_change_event(self.hass, list(self.pv_entities), self._pv_changed))
+
+    def update_balance(self, now: datetime) -> None:
+        """Decide which battery system charges and discharges first. `now` must be timezone-aware."""
+        # house load without the Zendure devices: what the primary system supplies, minus what they take from the home, plus what they give to it
+        load: float | None = None
+        if self.pv_load is not None:
+            house = self.pv_load - sum(d.homeInput.asInt for d in self.devices) + sum(d.homeOutput.asInt for d in self.devices)
+            if math.isfinite(house):
+                load = house
+                self.load_tracker.add(now, load)
+
+        # weekly full charge of the primary battery; the first start counts as done
+        last = self.lastFullCharge.native_value
+        due = last is not None and full_charge_due(last, now)
+        if due and self.pv_soc is not None and self.pv_soc >= SmartMode.PRIMARY_FULL_SOC:
+            self.lastFullCharge.update_value(now)
+            due = False
+        elif last is None and self.lastFullCharge.hass is not None:
+            self.lastFullCharge.update_value(now)
+
+        # fill levels between the minimum and maximum SoC
+        max_soc = self.pv_max_soc or 100
+        fill_s = fill_level(self.pv_soc, self.primary_min_soc, max_soc)
+        packs = [Pack(d.electricLevel.asNumber, d.minSoc.asNumber, d.socSet.asNumber, d.kWh, -d.charge_limit) for d in self.devices if d.online]
+        fill_z = zendure_fill(packs)
+
+        # classify the rest of today from the solar forecast
+        if self.forecast_next is None or now >= self.forecast_next:
+            self.forecast_next = now + SmartMode.FORECAST_INTERVAL
+            stage, surplus, peak = Stage.NONE, None, None
+            state = self.hass.states.get(self.pv_forecast_entity) if self.pv_forecast_entity else None
+            slots = forecast_slots(state.attributes.get("watts"), now) if state is not None else None
+            mean, base = self.load_tracker.mean(), self.load_tracker.base()
+            if mean is None or base is None:
+                mean = base = load
+            if slots is not None and self.pv_soc is not None and mean is not None and base is not None:
+                free_primary = max(0, max_soc - self.pv_soc) / 100 * self.primary_capacity
+                free_zendure = sum(max(0, p.max_soc - p.soc) / 100 * p.kwh for p in packs)
+                zendure_power = sum(p.charge_power for p in packs)
+                stage, surplus, peak = classify(slots, mean, base, free_primary, free_zendure, self.primary_power, zendure_power)
+            self.stage_filter.update(stage)
+            self.forecastSurplus.update_value(surplus)
+            self.forecastPeak.update_value(None if peak is None else round(peak))
+
+        lead = lead_for(self.stage_filter.value, due, self.primaryLead.asNumber)
+
+        # without both fill levels the priority falls back to the behavior without balancing
+        charge = discharge = None
+        if fill_s is not None and fill_z is not None:
+            charge = charge_choice(fill_s, fill_z, lead, self.charge_hold.value)
+            discharge = discharge_choice(fill_s, fill_z, self.discharge_hold.value)
+        self.charge_hold.update(charge, now)
+        self.discharge_hold.update(discharge, now)
+
+        self.forecastStage.update_value(self.stage_filter.value.value)
+        self.primaryLeadActive.update_value(lead)
+        self.primaryFill.update_value(None if fill_s is None else round(fill_s))
+        self.zendureFill.update_value(None if fill_z is None else round(fill_z))
+        self.chargePriority.update_value(self.charge_hold.value.value)
+        self.dischargePriority.update_value(self.discharge_hold.value.value)
 
     def writeSimulation(self, time: datetime, p1: int) -> None:
         if Path("simulation.csv").exists() is False:

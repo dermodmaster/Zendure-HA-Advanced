@@ -13,6 +13,10 @@ CONF_PV_METER = "pv_meter"  # Meter active power (grid) of the primary PV system
 CONF_PV_BATTERY = "pv_battery"  # Battery Power of the primary PV system (neg = charging)
 CONF_PV_SOC = "pv_soc"  # State of charge of the primary battery
 CONF_PV_MAX_SOC = "pv_max_soc"  # Maximum state of charge of the primary battery (e.g. its inverter setting)
+CONF_PV_FORECAST = "pv_forecast"  # Solar forecast sensor with the attribute `watts` (optional)
+CONF_PV_CAPACITY = "pv_capacity"  # Capacity of the primary battery (kWh)
+CONF_PV_POWER = "pv_power"  # Charge/discharge power of the primary battery (W)
+CONF_PV_MIN_SOC = "pv_min_soc"  # Minimum state of charge of the primary battery (%)
 CONF_PRICE = "price"
 CONF_MQTTLOG = "mqttlog"
 CONF_MQTTLOCAL = "mqttlocal"
@@ -95,3 +99,8 @@ class SmartMode:
     FORECAST_INTERVAL = timedelta(minutes=15)  # How often the solar forecast is read and classified
     LOAD_WINDOW = timedelta(hours=24)  # House load history used for the expected and the base load
     LOAD_BASE_QUANTILE = 0.2  # Quantile of the house load history that counts as the base load
+
+    PRIMARY_CAPACITY = 6.4  # Default capacity of the primary battery (kWh)
+    PRIMARY_POWER = 2750  # Default charge/discharge power of the primary battery (W)
+    PRIMARY_MIN_SOC = 5  # Default minimum SoC of the primary battery (%)
+    PRIMARY_LEAD = 15  # Default fill level lead (percentage points) of the primary battery in a mixed or unknown forecast
