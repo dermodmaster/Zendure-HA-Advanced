@@ -126,11 +126,12 @@ def forecast_slots(watts: Any, now: datetime) -> list[float] | None:
     for key, value in watts.items():
         try:
             start = datetime.fromisoformat(key)
+            start = start.replace(tzinfo=UTC) if start.tzinfo is None else start
             power = float(value)
-        except (TypeError, ValueError):
+            on_today = start.astimezone(now.tzinfo).date() == today
+        except (TypeError, ValueError, OverflowError):
             continue
-        start = start.replace(tzinfo=UTC) if start.tzinfo is None else start
-        if start.astimezone(now.tzinfo).date() != today:
+        if not on_today:
             continue
         found = True
         if power > 0 and start + FORECAST_SLOT > now:

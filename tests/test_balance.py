@@ -123,6 +123,15 @@ def test_forecast_slots_missing_or_broken() -> None:
     assert forecast_slots({"2026-11-14T11:00:00+00:00": 800}, NOW) is None  # yesterday only
 
 
+def test_forecast_slots_skip_values_that_overflow() -> None:
+    year_one = {"0001-01-01T00:00:00+05:00": 5}
+    assert forecast_slots(year_one, NOW) is None
+    assert forecast_slots({"9999-12-31T23:59:59-05:00": 5}, NOW) is None
+    assert forecast_slots({"2026-11-15T11:00:00+00:00": 10**400}, NOW) is None
+    mixed = {**year_one, "2026-11-15T11:00:00+00:00": 1000, "2026-11-15T11:15:00+00:00": 10**400}
+    assert forecast_slots(mixed, NOW) == [1000]
+
+
 def _classify(slots: list[float]) -> tuple[Stage, float, float]:
     return classify(slots, expected_load=500, base_load=300, free_primary=4.48, free_zendure=6.0, primary_power=2750, zendure_power=4800)
 
