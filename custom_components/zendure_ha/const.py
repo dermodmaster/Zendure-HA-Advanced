@@ -89,3 +89,6 @@ class SmartMode:
 
     PRIMARY_FULL_CHARGE_WEEKDAY = 5  # Saturday: charge the primary battery to 100 % (BMS calibration, cell balancing)
     PRIMARY_FULL_SOC = 99  # Primary SoC (%) that counts as the weekly full charge being done
+
+    BALANCE_HYSTERESIS = 5  # Fill level difference (percentage points) needed before the charge/discharge priority flips back
+    BALANCE_HOLD = timedelta(minutes=15)  # Minimum time between two priority switches
