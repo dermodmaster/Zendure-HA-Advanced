@@ -81,7 +81,9 @@ class SmartMode:
     HEMSOFF_TIMEOUT = 60  # Seconds before HEMS state is set to OFF if no updates are received
 
     POWER_START = 50  # Minimum Power (W) for starting a device
-    DISCHARGE_STOP = 0.8  # Stop the lowest of several discharging devices below this share of its optimal power
+    # Discharge device hysteresis, as multiples of the optimal power (a quarter of the device limit, SF 2400: 600 W)
+    DISCHARGE_START = 3  # Start another device above this multiple of the running devices' optimal power (one SF 2400: 1800 W)
+    DISCHARGE_STOP = 13 / 6  # Stop the lowest device below this multiple of the remaining devices' optimal power (two SF 2400: 1300 W)
     POWER_TOLERANCE = 5  # Device-level power tolerance (W) before updating
 
     # Solar surplus mode (charging without grid feed-in)
