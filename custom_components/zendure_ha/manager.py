@@ -934,7 +934,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
             await d.power_discharge(0 if max(0, d.pwr_offgrid) == 0 else 10)
 
         # distribute discharging devices, use produced power first, before adding another device
-        dev_start = max(0, setpoint - self.discharge_optimal * 2 - self.discharge_produced) if setpoint > SmartMode.POWER_START else 0
+        dev_start = max(0, setpoint - self.discharge_optimal * SmartMode.DISCHARGE_START - self.discharge_produced) if setpoint > SmartMode.POWER_START else 0
         solaronly = self.discharge_produced >= setpoint
         limit = self.discharge_produced if solaronly else self.discharge_limit
         setpoint = min(limit, setpoint)
@@ -963,10 +963,13 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                 pwr = max(setpoint - limit, 0 if d.state != DeviceState.SOCFULL else -d.pwr_produced)
             pwr = min(pwr, setpoint, d.pwr_max)
 
-            # make sure we have devices in optimal working range: stop the lowest device once its share drops
-            # below DISCHARGE_STOP x optimal power; a second device starts above 2 x optimal (hysteresis)
+            # make sure we have devices in optimal working range: stop the lowest device once the total setpoint
+            # (still undivided for i == 0) drops below DISCHARGE_STOP x the optimal power of the remaining devices;
+            # another device starts above DISCHARGE_START x optimal (hysteresis). The total, not the device's share,
+            # decides, so the thresholds do not shift with the SoC weighting.
             if len(self.discharge) > 1 and i == 0 and d.state != DeviceState.SOCFULL:
-                self.pwr_low = 0 if (delta := d.discharge_optimal * SmartMode.DISCHARGE_STOP - pwr) <= 0 else self.pwr_low + int(delta)
+                stop_at = (self.discharge_optimal - d.discharge_optimal) * SmartMode.DISCHARGE_STOP
+                self.pwr_low = 0 if (delta := stop_at - setpoint) <= 0 else self.pwr_low + int(delta)
                 pwr = 0 if self.pwr_low > d.discharge_optimal else pwr
 
             setpoint -= await d.power_discharge(pwr)

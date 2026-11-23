@@ -110,11 +110,11 @@ async def test_power_charge_first_call_primes_hysteria_and_forces_zero_setpoint(
     assert manager.operationstate.values == [ManagerState.IDLE.value]
 
 
-async def _discharge_cycles(setpoint: int, cycles: int) -> tuple[_FakeDevice, _FakeDevice]:
-    """Two SF 2400 AC+ discharging; the lower one (63 %) is the stop candidate."""
+async def _discharge_cycles(setpoint: int, cycles: int, low_level: int = 63, high_level: int = 70) -> tuple[_FakeDevice, _FakeDevice]:
+    """Two SF 2400 AC+ discharging; the lower one is the stop candidate."""
     manager = _make_manager_harness()
-    low = _FakeDevice(pwr_max=2400, electric_level=63)
-    high = _FakeDevice(pwr_max=2400, electric_level=70)
+    low = _FakeDevice(pwr_max=2400, electric_level=low_level)
+    high = _FakeDevice(pwr_max=2400, electric_level=high_level)
     for d in (low, high):
         d.discharge_start = 240
         d.discharge_optimal = 600
@@ -134,8 +134,49 @@ async def test_power_discharge_stops_second_device_below_two_optimal_ranges() ->
     assert high.discharge_calls[-1] == 760
 
 
+async def test_power_discharge_stops_second_device_below_1300_w() -> None:
+    low, high = await _discharge_cycles(1250, cycles=30)
+    assert low.discharge_calls[-1] == 0
+    assert high.discharge_calls[-1] == 1250
+
+
 async def test_power_discharge_keeps_both_devices_inside_hysteresis() -> None:
-    # 1100 W: below the 1200 W start threshold, but above the stop threshold -> no flapping
-    low, high = await _discharge_cycles(1100, cycles=30)
+    # 1500 W: below the 1800 W start threshold, but above the 1300 W stop threshold -> no flapping
+    low, high = await _discharge_cycles(1500, cycles=30)
     assert low.discharge_calls[-1] > 0
     assert high.discharge_calls[-1] > 0
+
+
+async def test_power_discharge_stop_threshold_ignores_soc_weighting() -> None:
+    # A much emptier device gets only a small share, but the total is above 1300 W -> both keep running
+    low, high = await _discharge_cycles(1500, cycles=30, low_level=30, high_level=90)
+    assert 0 < low.discharge_calls[-1] < 650
+    assert high.discharge_calls[-1] > 0
+
+
+async def _discharge_one_running(setpoint: int) -> _FakeDevice:
+    """One SF 2400 AC+ discharging, a second one idle at a similar SoC."""
+    manager = _make_manager_harness()
+    running = _FakeDevice(pwr_max=2400, electric_level=70)
+    idle = _FakeDevice(pwr_max=2400, electric_level=72)
+    for d in (running, idle):
+        d.discharge_start = 240
+        d.discharge_optimal = 600
+    manager.discharge = [running]
+    manager.discharge_limit = 2400
+    manager.discharge_optimal = 600
+    manager.discharge_weight = running.pwr_max * running.electricLevel.asInt
+    manager.idle = [idle]
+    manager.idle_lvlmax = idle.electricLevel.asInt
+    await manager.power_discharge(setpoint)
+    return idle
+
+
+async def test_power_discharge_no_second_device_below_1800_w() -> None:
+    idle = await _discharge_one_running(1700)
+    assert idle.discharge_calls == []
+
+
+async def test_power_discharge_starts_second_device_above_1800_w() -> None:
+    idle = await _discharge_one_running(1900)
+    assert idle.discharge_calls == [50]
